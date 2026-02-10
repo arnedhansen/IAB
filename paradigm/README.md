@@ -4,7 +4,7 @@ An inattentional blindness paradigm implemented in MATLAB using PsychToolbox. Th
 
 ## Task Overview
 
-Participants are presented with **8 digits** (0-9) moving randomly around the screen. Digits are either **black** or **white**. Their task is to add together **only the BLACK digits** and ignore the white ones. On some trials, an unexpected gray cross appears offset to the side of the screen. The task measures whether participants notice this unexpected stimulus while focusing on the primary counting task.
+Participants are presented with **12 digits** (1-20) moving randomly around the screen. Digits are either **black** or **white**. Their task is to add together **only the BLACK digits** and ignore the white ones. On some trials, an unexpected gray cross appears offset to the side of the screen. The task measures whether participants notice this unexpected stimulus while focusing on the primary counting task.
 
 ## Experimental Groups
 
@@ -28,13 +28,13 @@ The experiment uses a **two-group design** to investigate the role of attention 
 - **3 practice trials**
 - No unexpected cross appears
 - Participants familiarize themselves with the task
-- Always 8 digits per trial (3-5 black, rest white)
+- Always 12 digits per trial (6 black, 6 white)
 
 ### Main Task
 - **100 trials**
-- Always **8 digits** per trial
-- **3-5 black digits** per trial (randomly assigned)
-- Remaining digits are white (to be ignored)
+- Always **12 digits** per trial
+- **6 black digits** per trial (always)
+- **6 white digits** per trial (always)
 - **Cross appears in ~33 trials** (1/3 of trials)
   - Cross does **NOT** appear in:
     - Practice trials
@@ -50,7 +50,7 @@ Each trial consists of three phases:
    - Participants prepare for the trial
 
 2. **Stimulus Presentation** (7000ms)
-   - 8 digits appear and move randomly around the screen
+   - 12 digits appear and move randomly around the screen
    - Digits bounce off screen edges
    - Digits are either black (to be summed) or white (to be ignored)
    - On cross trials: A grayish cross appears offset to the side
@@ -90,7 +90,7 @@ Responses are recorded as YES (1) or NO (0) and saved in the data file.
 For each trial, the following metrics are saved:
 
 - `nDigits`: Number of digits in trial (always 8)
-- `digits`: Cell array containing which digits appeared (0-9)
+- `digits`: Cell array containing which digits appeared (1-20)
 - `digitColors`: Cell array indicating color of each digit (1=black, 0=white)
 - `crossPresent`: Binary indicator (1 = cross present, 0 = absent)
 - `crossPosition`: Cross position [x, y] if present, [NaN, NaN] if absent

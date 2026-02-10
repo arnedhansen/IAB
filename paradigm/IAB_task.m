@@ -2,7 +2,7 @@
 % This code requires PsychToolbox. https://psychtoolbox.org
 %
 % Task: Participants sum only BLACK digits (ignore white digits)
-% - Always 8 numbers per trial (0-9)
+% - Always 12 numbers per trial (1-20)
 % - Numbers are black or white
 % - Two groups: Group A (focused) vs Group B (expanded attention)
 % - Cross appears in 1/3 of trials (offset to side, appears 5s into 7s stimulus)
@@ -49,6 +49,15 @@ TASK_END = 90; % Trigger for ET cutting
 % Block and Trial Number
 exp.nTrlPractice = 3; % n practice trials
 exp.nTrlMain = 100; % n main task trials
+
+% Time estimate per participant (total ~25-30 minutes):
+% - Setup/calibration: 2-3 minutes
+% - Reading instructions: ~30 seconds
+% - Practice trials: 3 trials × ~13 seconds = ~40 seconds (+ feedback ~1 min total)
+% - Main task: 100 trials × ~13 seconds = ~22 minutes
+% - Perception questions: 4 questions × ~10 seconds = ~40 seconds
+% - Breaks/transitions: ~1 minute
+% Total: ~25-30 minutes per participant
 
 if TRAINING == 1
     exp.nTrials = exp.nTrlPractice;
@@ -200,7 +209,7 @@ digitColorBlack = [0 0 0]; % Black digits (to be summed)
 digitColorWhite = [255 255 255]; % White digits (to be ignored)
 
 % Movement parameters
-digitSpeed = 2; % cm/s (will be converted to pixels)
+digitSpeed = 2.5; % cm/s (will be converted to pixels)
 digitSpeed_pix = digitSpeed * (screen.resolutionX / screen.width); % Convert to pixels per second
 
 % Movement boundaries (leave some margin from edges)
@@ -217,7 +226,7 @@ crossExtent = crossSize_pix / 2;
 crossCoords = [-crossExtent crossExtent 0 0; 0 0 -crossExtent crossExtent];
 
 % Cross movement parameters (moves randomly like digits)
-crossSpeed = 2; % cm/s (same as digits)
+crossSpeed = 2.5; % cm/s (same as digits)
 crossSpeed_pix = crossSpeed * (screen.resolutionX / screen.width); % Convert to pixels per second
 
 % Use realtime priority for better timing precision
@@ -226,17 +235,16 @@ Priority(priorityLevel);
 
 %% Create data structure for preallocating data
 data = struct;
-data.nDigits(1, exp.nTrials) = NaN; % Number of digits in trial (always 8)
 data.digits(1, exp.nTrials) = {[]}; % Cell array to store which digits appeared
 data.digitColors(1, exp.nTrials) = {[]}; % Cell array to store color of each digit (1=black, 0=white)
 data.crossPresent(1, exp.nTrials) = NaN; % Binary: was cross present?
-data.crossPosition(1, exp.nTrials) = {[]}; % Cross position [x, y] if present
+data.crossPosition(1, exp.nTrials) = {[]}; % Continuous cross position [x, y] sampled at 500 Hz
+data.crossPositionTime(1, exp.nTrials) = {[]}; % Timestamps for each position sample
 data.correctSum(1, exp.nTrials) = NaN; % Correct sum of BLACK digits only
 data.participantSum(1, exp.nTrials) = NaN; % What participant entered
 data.binaryAccuracy(1, exp.nTrials) = NaN; % Correct (1) or incorrect (0)
 data.continuousAccuracy(1, exp.nTrials) = NaN; % Percentage deviation from correct sum
 data.reactionTime(1, exp.nTrials) = NaN; % Time from stimulus end to response submission
-data.inputTime(1, exp.nTrials) = NaN; % Time spent in input period
 data.trialDuration(1, exp.nTrials) = NaN; % Total trial duration
 
 % Determine which trials will have cross (1/3 of trials, but not in practice or first 2 real trials)
@@ -307,7 +315,6 @@ for trl = 1:exp.nTrials
     tic;
     
     % Store trial condition
-    data.nDigits(trl) = 8; % Always 8 digits
     data.crossPresent(trl) = crossTrials(trl);
     
     %% Present jittered fixation cross
@@ -347,12 +354,12 @@ for trl = 1:exp.nTrials
     WaitSecs(timing.fixDuration(trl));
     
     %% Initialize digit positions and movements
-    nDigits = 8; % Always 8 digits
-    digits = randi([0 9], 1, nDigits); % Random digits 0-9
+    nDigits = 12; % Always 12 digits
+    digits = randi([1 20], 1, nDigits); % Random digits 1-20
     
-    % Randomly assign colors: always 4 black and 4 white
+    % Randomly assign colors: always 6 black and 6 white
     digitColors = zeros(1, nDigits);
-    blackIndices = randperm(nDigits, 4); % Always exactly 4 black digits
+    blackIndices = randperm(nDigits, 6); % Always exactly 6 black digits
     digitColors(blackIndices) = 1; % 1 = black, 0 = white
     
     data.digits{trl} = digits;
@@ -380,6 +387,13 @@ for trl = 1:exp.nTrials
     crossVel = [NaN, NaN];
     crossVisible = false;
     
+    % Initialize continuous position recording (500 Hz sampling for eye tracker)
+    eyeTrackerSamplingRate = 500; % Hz
+    sampleInterval = 1 / eyeTrackerSamplingRate; % 0.002 seconds between samples
+    crossPositionSamples = []; % Will store [x, y] positions
+    crossPositionTimes = []; % Will store timestamps
+    lastSampleTime = NaN;
+    
     if data.crossPresent(trl) == 1
         % Random starting position (within movement bounds)
         crossX = randi([moveBounds(1), moveBounds(3)]);
@@ -389,9 +403,6 @@ for trl = 1:exp.nTrials
         crossVel(1) = cos(angle) * crossSpeed_pix;
         crossVel(2) = sin(angle) * crossSpeed_pix;
         crossVisible = true; % Cross appears from the beginning
-        data.crossPosition{trl} = [crossX, crossY];
-    else
-        data.crossPosition{trl} = [NaN, NaN];
     end
     
     % Store last frame time for time-based movement
@@ -407,6 +418,14 @@ for trl = 1:exp.nTrials
     stimulusStartTime = GetSecs;
     Eyelink('Message', num2str(TRIGGER));
     Eyelink('command', 'record_status_message "STIMULUS_START"');
+    
+    % Initialize position sampling for distractor (if present) at 500 Hz
+    if data.crossPresent(trl) == 1
+        % Record initial position at stimulus start
+        crossPositionSamples = [crossX, crossY];
+        crossPositionTimes = stimulusStartTime;
+        lastSampleTime = stimulusStartTime;
+    end
     
     % Screenshot: Stimulus start (number cloud)
     if enableScreenshots
@@ -496,8 +515,25 @@ for trl = 1:exp.nTrials
                 crossY = max(moveBounds(2), min(moveBounds(4), crossY));
             end
             
-            % Update stored position
-            data.crossPosition{trl} = [crossX, crossY];
+            % Record position at 500 Hz sampling rate (eye tracker rate)
+            % Position only changes when frame updates, so record current position
+            % whenever enough time has passed for next sample
+            currentTime = GetSecs;
+            timeSinceLastSample = currentTime - lastSampleTime;
+            
+            if timeSinceLastSample >= sampleInterval
+                % Calculate how many samples we should record (catch up if needed)
+                nSamplesToRecord = floor(timeSinceLastSample / sampleInterval);
+                
+                % Record the current position for each sample interval that passed
+                for s = 1:nSamplesToRecord
+                    sampleTime = lastSampleTime + s * sampleInterval;
+                    crossPositionSamples = [crossPositionSamples; crossX, crossY];
+                    crossPositionTimes = [crossPositionTimes; sampleTime];
+                end
+                
+                lastSampleTime = lastSampleTime + nSamplesToRecord * sampleInterval;
+            end
             
             % Draw cross
             Screen('DrawLines', ptbWindow, crossCoords, fixationLineWidth, ...
@@ -530,6 +566,15 @@ for trl = 1:exp.nTrials
                 lastVideoFrameTime = currentTime;
             end
         end
+    end
+    
+    % Store continuous distractor positions (sampled at 500 Hz)
+    if data.crossPresent(trl) == 1
+        data.crossPosition{trl} = crossPositionSamples; % N×2 matrix: [x, y] positions
+        data.crossPositionTime{trl} = crossPositionTimes; % N×1 vector: timestamps
+    else
+        data.crossPosition{trl} = [];
+        data.crossPositionTime{trl} = [];
     end
     
     %% Input period (3000ms)
@@ -607,7 +652,6 @@ for trl = 1:exp.nTrials
                     responseSubmitted = true;
                     responseTime = GetSecs - inputStartTime;
                     data.participantSum(trl) = str2double(inputString);
-                    data.inputTime(trl) = GetSecs - inputStartTime;
                     
                     % Send response submitted trigger (ET only)
                     TRIGGER = RESPONSE_SUBMITTED;
@@ -661,7 +705,6 @@ for trl = 1:exp.nTrials
         else
             data.participantSum(trl) = NaN;
         end
-        data.inputTime(trl) = timing.inputDuration;
         responseTime = timing.inputDuration;
     end
     
