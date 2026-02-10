@@ -216,18 +216,42 @@ digitSpeed_pix = digitSpeed * (screen.resolutionX / screen.width); % Convert to 
 margin = 50; % pixels
 moveBounds = [margin, margin, screen.resolutionX - margin, screen.resolutionY - margin];
 
-%% Cross parameters (for unexpected cross)
-crossSize_dva = 1.5; % Size of cross in degrees of visual angle (same as digits, increased)
-crossSize_pix = round(crossSize_dva * screen.ppd);
-crossColor = [120 120 120]; % Grayish color (slightly darker than background)
+%% Distractor parameters (grey monkey image)
+distractorSize_dva = 1.5; % Size of distractor in degrees of visual angle (same as digits)
+distractorSize_pix = round(distractorSize_dva * screen.ppd);
 
-% Cross horizontal/vertical extent
-crossExtent = crossSize_pix / 2;
-crossCoords = [-crossExtent crossExtent 0 0; 0 0 -crossExtent crossExtent];
+% Distractor movement parameters (moves randomly like digits)
+distractorSpeed = 2.5; % cm/s (same as digits)
+distractorSpeed_pix = distractorSpeed * (screen.resolutionX / screen.width); % Convert to pixels per second
 
-% Cross movement parameters (moves randomly like digits)
-crossSpeed = 2.5; % cm/s (same as digits)
-crossSpeed_pix = crossSpeed * (screen.resolutionX / screen.width); % Convert to pixels per second
+% Load monkey image (must be done after window is opened)
+monkeyImagePath = '/Users/Arne/Documents/GitHub/IAB/paradigm/monkey.png';
+if ~exist(monkeyImagePath, 'file')
+    error('Monkey image not found at: %s', monkeyImagePath);
+end
+
+% Load and scale monkey image
+[monkeyImage, ~, alpha] = imread(monkeyImagePath);
+% Resize image to match digit size (maintain aspect ratio)
+[origHeight, origWidth, ~] = size(monkeyImage);
+aspectRatio = origWidth / origHeight;
+if aspectRatio > 1
+    % Wider than tall
+    newWidth = distractorSize_pix;
+    newHeight = round(distractorSize_pix / aspectRatio);
+else
+    % Taller than wide or square
+    newHeight = distractorSize_pix;
+    newWidth = round(distractorSize_pix * aspectRatio);
+end
+monkeyImage = imresize(monkeyImage, [newHeight, newWidth]);
+if ~isempty(alpha)
+    alpha = imresize(alpha, [newHeight, newWidth]);
+end
+
+% Create texture from image
+monkeyTexture = Screen('MakeTexture', ptbWindow, monkeyImage);
+monkeyTextureSize = [newWidth, newHeight]; % Store size for drawing
 
 % Use realtime priority for better timing precision
 priorityLevel = MaxPriority(ptbWindow);
@@ -381,28 +405,28 @@ for trl = 1:exp.nTrials
         digitVel(d, 2) = sin(angle) * digitSpeed_pix;
     end
     
-    % Initialize cross position and movement (if present)
-    crossX = NaN;
-    crossY = NaN;
-    crossVel = [NaN, NaN];
-    crossVisible = false;
+    % Initialize distractor position and movement (if present)
+    distractorX = NaN;
+    distractorY = NaN;
+    distractorVel = [NaN, NaN];
+    distractorVisible = false;
     
     % Initialize continuous position recording (500 Hz sampling for eye tracker)
     eyeTrackerSamplingRate = 500; % Hz
     sampleInterval = 1 / eyeTrackerSamplingRate; % 0.002 seconds between samples
-    crossPositionSamples = []; % Will store [x, y] positions
-    crossPositionTimes = []; % Will store timestamps
+    distractorPositionSamples = []; % Will store [x, y] positions
+    distractorPositionTimes = []; % Will store timestamps
     lastSampleTime = NaN;
     
     if data.crossPresent(trl) == 1
         % Random starting position (within movement bounds)
-        crossX = randi([moveBounds(1), moveBounds(3)]);
-        crossY = randi([moveBounds(2), moveBounds(4)]);
+        distractorX = randi([moveBounds(1), moveBounds(3)]);
+        distractorY = randi([moveBounds(2), moveBounds(4)]);
         % Random velocity direction (moves randomly like digits)
         angle = rand * 2 * pi;
-        crossVel(1) = cos(angle) * crossSpeed_pix;
-        crossVel(2) = sin(angle) * crossSpeed_pix;
-        crossVisible = true; % Cross appears from the beginning
+        distractorVel(1) = cos(angle) * distractorSpeed_pix;
+        distractorVel(2) = sin(angle) * distractorSpeed_pix;
+        distractorVisible = true; % Distractor appears from the beginning
     end
     
     % Store last frame time for time-based movement
@@ -422,8 +446,8 @@ for trl = 1:exp.nTrials
     % Initialize position sampling for distractor (if present) at 500 Hz
     if data.crossPresent(trl) == 1
         % Record initial position at stimulus start
-        crossPositionSamples = [crossX, crossY];
-        crossPositionTimes = stimulusStartTime;
+        distractorPositionSamples = [distractorX, distractorY];
+        distractorPositionTimes = stimulusStartTime;
         lastSampleTime = stimulusStartTime;
     end
     
@@ -499,20 +523,20 @@ for trl = 1:exp.nTrials
             end
         end
         
-        % Update and draw cross if present (moves randomly like digits)
-        if data.crossPresent(trl) == 1 && crossVisible
-            % Update cross position (time-based movement, same as digits)
-            crossX = crossX + crossVel(1) * deltaTime;
-            crossY = crossY + crossVel(2) * deltaTime;
+        % Update and draw distractor if present (moves randomly like digits)
+        if data.crossPresent(trl) == 1 && distractorVisible
+            % Update distractor position (time-based movement, same as digits)
+            distractorX = distractorX + distractorVel(1) * deltaTime;
+            distractorY = distractorY + distractorVel(2) * deltaTime;
             
             % Bounce off edges (same as digits)
-            if crossX <= moveBounds(1) || crossX >= moveBounds(3)
-                crossVel(1) = -crossVel(1);
-                crossX = max(moveBounds(1), min(moveBounds(3), crossX));
+            if distractorX <= moveBounds(1) || distractorX >= moveBounds(3)
+                distractorVel(1) = -distractorVel(1);
+                distractorX = max(moveBounds(1), min(moveBounds(3), distractorX));
             end
-            if crossY <= moveBounds(2) || crossY >= moveBounds(4)
-                crossVel(2) = -crossVel(2);
-                crossY = max(moveBounds(2), min(moveBounds(4), crossY));
+            if distractorY <= moveBounds(2) || distractorY >= moveBounds(4)
+                distractorVel(2) = -distractorVel(2);
+                distractorY = max(moveBounds(2), min(moveBounds(4), distractorY));
             end
             
             % Record position at 500 Hz sampling rate (eye tracker rate)
@@ -528,29 +552,31 @@ for trl = 1:exp.nTrials
                 % Record the current position for each sample interval that passed
                 for s = 1:nSamplesToRecord
                     sampleTime = lastSampleTime + s * sampleInterval;
-                    crossPositionSamples = [crossPositionSamples; crossX, crossY];
-                    crossPositionTimes = [crossPositionTimes; sampleTime];
+                    distractorPositionSamples = [distractorPositionSamples; distractorX, distractorY];
+                    distractorPositionTimes = [distractorPositionTimes; sampleTime];
                 end
                 
                 lastSampleTime = lastSampleTime + nSamplesToRecord * sampleInterval;
             end
             
-            % Draw cross
-            Screen('DrawLines', ptbWindow, crossCoords, fixationLineWidth, ...
-                   crossColor, [crossX crossY], 2);
+            % Draw monkey image (distractor)
+            % Calculate destination rectangle centered on distractor position
+            destRect = [distractorX - monkeyTextureSize(1)/2, distractorY - monkeyTextureSize(2)/2, ...
+                       distractorX + monkeyTextureSize(1)/2, distractorY + monkeyTextureSize(2)/2];
+            Screen('DrawTexture', ptbWindow, monkeyTexture, [], destRect);
             
-            % Screenshot: Cross appear (only once at start)
+            % Screenshot: Distractor appear (only once at start)
             elapsedTime = GetSecs - stimulusStartTime;
             if enableScreenshots && elapsedTime < 0.1
-                screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_cross_appear.png', trl));
+                screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_distractor_appear.png', trl));
                 screenshot(screenshotFilename, ptbWindow, enableScreenshots);
             end
             
-            % Send cross appear trigger (only once at start)
+            % Send distractor appear trigger (only once at start)
             if elapsedTime < 0.1
                 TRIGGER = CROSS_APPEAR;
                 Eyelink('Message', num2str(TRIGGER));
-                Eyelink('command', 'record_status_message "CROSS_APPEAR"');
+                Eyelink('command', 'record_status_message "DISTRACTOR_APPEAR"');
             end
         end
         
@@ -570,8 +596,8 @@ for trl = 1:exp.nTrials
     
     % Store continuous distractor positions (sampled at 500 Hz)
     if data.crossPresent(trl) == 1
-        data.crossPosition{trl} = crossPositionSamples; % N×2 matrix: [x, y] positions
-        data.crossPositionTime{trl} = crossPositionTimes; % N×1 vector: timestamps
+        data.crossPosition{trl} = distractorPositionSamples; % N×2 matrix: [x, y] positions
+        data.crossPositionTime{trl} = distractorPositionTimes; % N×1 vector: timestamps
     else
         data.crossPosition{trl} = [];
         data.crossPositionTime{trl} = [];
