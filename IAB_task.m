@@ -652,7 +652,7 @@ for trl = 1:exp.nTrials
                 keyPressed = false;
                 
                 % Check for backspace first
-                if keyCode(backspaceKeyCode)
+                if any(keyCode(backspaceKeyCode))
                     if length(inputString) > 0
                         inputString = inputString(1:end-1);
                     end
@@ -661,7 +661,7 @@ for trl = 1:exp.nTrials
                 end
                 
                 % Check for enter (submit response)
-                if ~keyPressed && keyCode(enterKeyCode) && length(inputString) > 0
+                if ~keyPressed && any(keyCode(enterKeyCode)) && length(inputString) > 0
                     responseSubmitted = true;
                     responseTime = GetSecs - inputStartTime;
                     data.participantSum(trl) = str2double(inputString);
