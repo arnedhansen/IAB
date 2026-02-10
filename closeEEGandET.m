@@ -1,12 +1,6 @@
-% Stop EEG and ET recordings and save the data
+% Stop Eye Tracking recordings and save the data
 
-if TRAINING == 0  %|| (TRAINING == 1 && RESTING == 1)
-    % stop recoring EEG of current task:
-    trigger = 2; % 2 stops the ANT Neuro
-    sendtrigger(trigger,port,SITE,stayup)
-    ppdev_mex('CloseAll');
-end
-
+% No EEG recording - only eye tracking
 fprintf('Stop Recording Track\n');
 Eyelink('StopRecording');
 Eyelink('CloseFile');

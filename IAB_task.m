@@ -8,7 +8,7 @@
 % - Cross appears in 1/3 of trials (offset to side, appears 5s into 7s stimulus)
 % - Cross does NOT appear in practice trials or first 2 real trials
 
-%% Initialize EEG and ET
+%% Initialize Eye Tracking
 
 % Start of block message in CW
 if TRAINING == 1
@@ -21,28 +21,6 @@ end
 % Calibrate ET (Tobii Pro Fusion)
 disp('CALIBRATING ET...');
 calibrateET;
-
-if TRAINING == 0
-    % Start recording EEG
-    disp('STARTING EEG RECORDING...');
-    initEEG;
-
-    % Wait ten seconds to initialize EEG
-    clc
-    disp('INITIALIZING EEG... PLEASE WAIT 10 SECONDS')
-    for i=1:10
-        if i > 1
-            wbar = findall(0,'type','figure','tag','TMWWaitbar');
-            delete(wbar)
-        end
-        waitbar(i/10, 'INITIALIZING EEG');
-        pause(1);
-    end
-    wbar = findall(0,'type','figure','tag','TMWWaitbar');
-    delete(wbar)
-    clc
-    disp('EEG INITIALIZED!')
-end
 
 % Hide cursor on participant screen
 HideCursor(whichScreen);
@@ -213,11 +191,10 @@ timing.fixLower = 500; % Lower limit of fixation duration (ms)
 timing.fixUpper = 1500; % Upper limit of fixation duration (ms)
 timing.stimulusDuration = 7.0; % Stimulus presentation duration (seconds)
 timing.inputDuration = 5.0; % Input period duration (seconds)
-timing.crossAppearTime = 5.0; % Time into stimulus when cross appears (seconds)
-timing.crossDuration = 1.0 + rand() * 0.5; % Cross duration: 1.0-1.5s (randomized)
+% Cross appears from the beginning and moves throughout stimulus period
 
 %% Digit parameters
-digitSize_dva = 1.0; % Size of digits in degrees of visual angle
+digitSize_dva = 1.5; % Size of digits in degrees of visual angle (increased)
 digitSize_pix = round(digitSize_dva * screen.ppd);
 digitColorBlack = [0 0 0]; % Black digits (to be summed)
 digitColorWhite = [255 255 255]; % White digits (to be ignored)
@@ -231,7 +208,7 @@ margin = 50; % pixels
 moveBounds = [margin, margin, screen.resolutionX - margin, screen.resolutionY - margin];
 
 %% Cross parameters (for unexpected cross)
-crossSize_dva = 1.0; % Size of cross in degrees of visual angle (same or slightly larger than digits)
+crossSize_dva = 1.5; % Size of cross in degrees of visual angle (same as digits, increased)
 crossSize_pix = round(crossSize_dva * screen.ppd);
 crossColor = [120 120 120]; % Grayish color (slightly darker than background)
 
@@ -239,9 +216,9 @@ crossColor = [120 120 120]; % Grayish color (slightly darker than background)
 crossExtent = crossSize_pix / 2;
 crossCoords = [-crossExtent crossExtent 0 0; 0 0 -crossExtent crossExtent];
 
-% Cross movement speed (4.32 degrees per second)
-crossSpeed_degPerSec = 4.32;
-crossSpeed_pixPerSec = crossSpeed_degPerSec * screen.ppd;
+% Cross movement parameters (moves randomly like digits)
+crossSpeed = 2; % cm/s (same as digits)
+crossSpeed_pix = crossSpeed * (screen.resolutionX / screen.width); % Convert to pixels per second
 
 % Use realtime priority for better timing precision
 priorityLevel = MaxPriority(ptbWindow);
@@ -288,7 +265,7 @@ while waitResponse
     waitResponse = 0;
 end
 
-% Send triggers for start of task (ET cutting)
+% Send triggers for start of task (ET only)
 if TRAINING == 1
     Eyelink('Message', num2str(TASK_START));
     Eyelink('command', 'record_status_message "START"');
@@ -297,10 +274,8 @@ if TRAINING == 1
 else
     Eyelink('Message', num2str(TASK_START));
     Eyelink('command', 'record_status_message "START"');
-    sendtrigger(TASK_START,port,SITE,stayup);
     Eyelink('Message', num2str(MAIN_TASK_START));
     Eyelink('command', 'record_status_message "START MAIN TASK"');
-    sendtrigger(MAIN_TASK_START,port,SITE,stayup);
 end
 
 % Experiment prep
@@ -364,16 +339,10 @@ for trl = 1:exp.nTrials
         videoFrameInterval = 1/30; % Capture every 1/30 second
     end
     
-    % Send fixation trigger
+    % Send fixation trigger (ET only)
     TRIGGER = FIXCROSS;
-    if TRAINING == 1
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "FIXCROSS"');
-    else
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "FIXCROSS"');
-        sendtrigger(TRIGGER,port,SITE,stayup);
-    end
+    Eyelink('Message', num2str(TRIGGER));
+    Eyelink('command', 'record_status_message "FIXCROSS"');
     
     WaitSecs(timing.fixDuration(trl));
     
@@ -381,11 +350,9 @@ for trl = 1:exp.nTrials
     nDigits = 8; % Always 8 digits
     digits = randi([0 9], 1, nDigits); % Random digits 0-9
     
-    % Randomly assign colors: half black (to be summed), half white (to be ignored)
-    % Ensure at least some black digits
-    nBlack = randi([3 5]); % 3-5 black digits
+    % Randomly assign colors: always 4 black and 4 white
     digitColors = zeros(1, nDigits);
-    blackIndices = randperm(nDigits, nBlack);
+    blackIndices = randperm(nDigits, 4); % Always exactly 4 black digits
     digitColors(blackIndices) = 1; % 1 = black, 0 = white
     
     data.digits{trl} = digits;
@@ -410,21 +377,18 @@ for trl = 1:exp.nTrials
     % Initialize cross position and movement (if present)
     crossX = NaN;
     crossY = NaN;
+    crossVel = [NaN, NaN];
     crossVisible = false;
-    crossStartTime = NaN;
-    crossEndTime = NaN;
     
     if data.crossPresent(trl) == 1
-        % Random offset position (to the side, not center)
-        % Randomly choose left or right side
-        sideOffset = randi([2, 4]) * screen.ppd; % 2-4 degrees offset
-        if rand > 0.5
-            crossX = screen.centerX + sideOffset; % Right side
-        else
-            crossX = screen.centerX - sideOffset; % Left side
-        end
-        % Random vertical position (within reasonable bounds)
-        crossY = screen.centerY + (rand - 0.5) * 3 * screen.ppd; % ±1.5 degrees vertically
+        % Random starting position (within movement bounds)
+        crossX = randi([moveBounds(1), moveBounds(3)]);
+        crossY = randi([moveBounds(2), moveBounds(4)]);
+        % Random velocity direction (moves randomly like digits)
+        angle = rand * 2 * pi;
+        crossVel(1) = cos(angle) * crossSpeed_pix;
+        crossVel(2) = sin(angle) * crossSpeed_pix;
+        crossVisible = true; % Cross appears from the beginning
         data.crossPosition{trl} = [crossX, crossY];
     else
         data.crossPosition{trl} = [NaN, NaN];
@@ -433,28 +397,16 @@ for trl = 1:exp.nTrials
     % Store last frame time for time-based movement
     lastFrameTime = GetSecs;
     
-    % Send trial start trigger
+    % Send trial start trigger (ET only)
     TRIGGER = TRIAL_START;
-    if TRAINING == 1
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "TRIAL_START"');
-    else
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "TRIAL_START"');
-        sendtrigger(TRIGGER,port,SITE,stayup);
-    end
+    Eyelink('Message', num2str(TRIGGER));
+    Eyelink('command', 'record_status_message "TRIAL_START"');
     
-    % Send stimulus start trigger
+    % Send stimulus start trigger (ET only)
     TRIGGER = STIMULUS_START;
     stimulusStartTime = GetSecs;
-    if TRAINING == 1
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "STIMULUS_START"');
-    else
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "STIMULUS_START"');
-        sendtrigger(TRIGGER,port,SITE,stayup);
-    end
+    Eyelink('Message', num2str(TRIGGER));
+    Eyelink('command', 'record_status_message "STIMULUS_START"');
     
     % Screenshot: Stimulus start (number cloud)
     if enableScreenshots
@@ -528,45 +480,41 @@ for trl = 1:exp.nTrials
             end
         end
         
-        % Update and draw cross if present
-        if data.crossPresent(trl) == 1
-            elapsedTime = GetSecs - stimulusStartTime;
+        % Update and draw cross if present (moves randomly like digits)
+        if data.crossPresent(trl) == 1 && crossVisible
+            % Update cross position (time-based movement, same as digits)
+            crossX = crossX + crossVel(1) * deltaTime;
+            crossY = crossY + crossVel(2) * deltaTime;
             
-            % Cross appears at timing.crossAppearTime (5s)
-            if elapsedTime >= timing.crossAppearTime && elapsedTime < (timing.crossAppearTime + timing.crossDuration)
-                if ~crossVisible
-                    crossVisible = true;
-                    crossStartTime = GetSecs;
-                    % Send cross appear trigger
-                    TRIGGER = CROSS_APPEAR;
-                    if TRAINING == 1
-                        Eyelink('Message', num2str(TRIGGER));
-                    else
-                        Eyelink('Message', num2str(TRIGGER));
-                        sendtrigger(TRIGGER,port,SITE,stayup);
-                    end
-                end
-                
-                % Draw cross at fixed position (offset to side)
-                Screen('DrawLines', ptbWindow, crossCoords, fixationLineWidth, ...
-                       crossColor, [crossX crossY], 2);
-                
-                % Screenshot: Cross appear (only once when it first appears)
-                if enableScreenshots && (elapsedTime - timing.crossAppearTime) < 0.1
-                    screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_cross_appear.png', trl));
-                    screenshot(screenshotFilename, ptbWindow, enableScreenshots);
-                end
-            elseif elapsedTime >= (timing.crossAppearTime + timing.crossDuration) && crossVisible
-                crossVisible = false;
-                crossEndTime = GetSecs;
-                % Send cross disappear trigger
-                TRIGGER = CROSS_DISAPPEAR;
-                if TRAINING == 1
-                    Eyelink('Message', num2str(TRIGGER));
-                else
-                    Eyelink('Message', num2str(TRIGGER));
-                    sendtrigger(TRIGGER,port,SITE,stayup);
-                end
+            % Bounce off edges (same as digits)
+            if crossX <= moveBounds(1) || crossX >= moveBounds(3)
+                crossVel(1) = -crossVel(1);
+                crossX = max(moveBounds(1), min(moveBounds(3), crossX));
+            end
+            if crossY <= moveBounds(2) || crossY >= moveBounds(4)
+                crossVel(2) = -crossVel(2);
+                crossY = max(moveBounds(2), min(moveBounds(4), crossY));
+            end
+            
+            % Update stored position
+            data.crossPosition{trl} = [crossX, crossY];
+            
+            % Draw cross
+            Screen('DrawLines', ptbWindow, crossCoords, fixationLineWidth, ...
+                   crossColor, [crossX crossY], 2);
+            
+            % Screenshot: Cross appear (only once at start)
+            elapsedTime = GetSecs - stimulusStartTime;
+            if enableScreenshots && elapsedTime < 0.1
+                screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_cross_appear.png', trl));
+                screenshot(screenshotFilename, ptbWindow, enableScreenshots);
+            end
+            
+            % Send cross appear trigger (only once at start)
+            if elapsedTime < 0.1
+                TRIGGER = CROSS_APPEAR;
+                Eyelink('Message', num2str(TRIGGER));
+                Eyelink('command', 'record_status_message "CROSS_APPEAR"');
             end
         end
         
@@ -601,16 +549,10 @@ for trl = 1:exp.nTrials
         screenshot(screenshotFilename, ptbWindow, enableScreenshots);
     end
     
-    % Send input start trigger
+    % Send input start trigger (ET only)
     TRIGGER = INPUT_START;
-    if TRAINING == 1
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "INPUT_START"');
-    else
-        Eyelink('Message', num2str(TRIGGER));
-        Eyelink('command', 'record_status_message "INPUT_START"');
-        sendtrigger(TRIGGER,port,SITE,stayup);
-    end
+    Eyelink('Message', num2str(TRIGGER));
+    Eyelink('command', 'record_status_message "INPUT_START"');
     
     % Input loop
     inputString = '';
@@ -667,14 +609,10 @@ for trl = 1:exp.nTrials
                     data.participantSum(trl) = str2double(inputString);
                     data.inputTime(trl) = GetSecs - inputStartTime;
                     
-                    % Send response submitted trigger
+                    % Send response submitted trigger (ET only)
                     TRIGGER = RESPONSE_SUBMITTED;
-                    if TRAINING == 1
-                        Eyelink('Message', num2str(TRIGGER));
-                    else
-                        Eyelink('Message', num2str(TRIGGER));
-                        sendtrigger(TRIGGER,port,SITE,stayup);
-                    end
+                    Eyelink('Message', num2str(TRIGGER));
+                    Eyelink('command', 'record_status_message "RESPONSE_SUBMITTED"');
                     break;
                 end
                 
@@ -760,6 +698,36 @@ for trl = 1:exp.nTrials
         fprintf('Video saved: %s\n', videoFilename);
     end
     
+    %% Feedback for practice trials
+    if TRAINING == 1
+        Screen('FillRect', ptbWindow, backgroundColorGray);
+        Screen('TextSize', ptbWindow, 20);
+        
+        if data.binaryAccuracy(trl) == 1
+            feedbackText = 'Correct!';
+            feedbackColor = [0 150 0]; % Green
+        else
+            feedbackText = 'Incorrect!';
+            feedbackColor = [200 0 0]; % Red
+        end
+        
+        [textBounds] = Screen('TextBounds', ptbWindow, feedbackText);
+        textWidth = textBounds(3) - textBounds(1);
+        Screen('DrawText', ptbWindow, feedbackText, ...
+               screen.centerX - textWidth/2, screen.centerY, feedbackColor);
+        
+        % Also show correct answer
+        correctAnswerText = ['Correct answer: ' num2str(correctSum)];
+        Screen('TextSize', ptbWindow, 16);
+        [textBounds2] = Screen('TextBounds', ptbWindow, correctAnswerText);
+        textWidth2 = textBounds2(3) - textBounds2(1);
+        Screen('DrawText', ptbWindow, correctAnswerText, ...
+               screen.centerX - textWidth2/2, screen.centerY + 40, black);
+        
+        Screen('Flip', ptbWindow);
+        WaitSecs(2.0); % Show feedback for 2 seconds
+    end
+    
     %% Trial Info CW output
     overall_accuracy = round((nansum(data.binaryAccuracy(1:trl))/trl)*100);
     crossInfo = '';
@@ -785,7 +753,7 @@ end
 % Send triggers to end task
 Screen('Flip',ptbWindow);
 
-% Send triggers for block end
+% Send triggers for block end (ET only)
 if TRAINING == 1
     TRIGGER = PRACTICE_END;
     Eyelink('Message', num2str(TRIGGER));
@@ -795,19 +763,12 @@ else
     TRIGGER = TASK_END;
     Eyelink('Message', num2str(TRIGGER));
     Eyelink('command', 'record_status_message "END TASK"');
-    sendtrigger(TRIGGER,port,SITE,stayup);
     disp('End of Main Task');
 end
 
-% Send triggers for end of task (ET cutting)
-if TRAINING == 1
-    Eyelink('Message', num2str(TASK_END));
-    Eyelink('command', 'record_status_message "TASK_END"');
-else
-    Eyelink('Message', num2str(TASK_END));
-    Eyelink('command', 'record_status_message "TASK_END"');
-    sendtrigger(TASK_END,port,SITE,stayup);
-end
+% Send triggers for end of task (ET only)
+Eyelink('Message', num2str(TASK_END));
+Eyelink('command', 'record_status_message "TASK_END"');
 
 %% Perception Questions (only after main task, not practice)
 perceptionData = struct;
@@ -917,7 +878,7 @@ trigger.RESPONSE_SUBMITTED = RESPONSE_SUBMITTED;
 trigger.PRACTICE_END = PRACTICE_END;
 trigger.TASK_END = TASK_END;
 
-%% Stop and close EEG and ET recordings
+%% Stop and close Eye Tracking recordings
 if TRAINING == 1
     disp('PRACTICE FINISHED...');
 else
