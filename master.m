@@ -26,7 +26,6 @@ screenSettings % Manage screens
 
 %% Collect ID and Age
 dialogID;
-% subject.ID = 991; %Set to 999 for tests
 
 %% Group assignment based on Subject ID (201-220)
 % Group A: Focused attention instruction (Odd IDs: 201, 203, 205, ..., 219)
