@@ -90,6 +90,9 @@ enableVideo = 1; % Records full trial (fixation + stimulus + input)
 if TRAINING == 1
     startExperimentText = [
         'PRACTICE TRIALS \n\n' ...
+        'You will now complete 3 practice trials to familiarize yourself \n\n' ...
+        'with the task. \n\n' ...
+        '\n\n' ...
         'You will see black and white digits moving around the screen. \n\n' ...
         'Your task is to add together ONLY the BLACK numbers \n\n' ...
         'and ignore the white ones. \n\n' ...
@@ -137,8 +140,6 @@ Screen('Preference','Verbosity', 0);
 spaceKeyCode = KbName('Space');
 enterKeyCode = KbName('Return');
 backspaceKeyCode = KbName('BackSpace');
-numKeys = [KbName('0'), KbName('1'), KbName('2'), KbName('3'), KbName('4'), ...
-           KbName('5'), KbName('6'), KbName('7'), KbName('8'), KbName('9')];
 
 %% Imaging set up
 screen.ID = whichScreen; % Get index for stimulus presentation screen
@@ -184,7 +185,7 @@ end
 Screen('BlendFunction', ptbWindow, 'GL_SRC_ALPHA', 'GL_ONE_MINUS_SRC_ALPHA');
 
 %% Text parameters
-Screen('TextSize', ptbWindow, 25); % Font size for instructions and stimuli
+Screen('TextSize', ptbWindow, 18); % Font size for instructions and stimuli (reduced)
 Screen('TextFont', ptbWindow, 'Courier'); % Monospace font for digits
 
 % Show loading text
@@ -211,7 +212,7 @@ fixPos = [screen.centerX, screen.centerY];
 timing.fixLower = 500; % Lower limit of fixation duration (ms)
 timing.fixUpper = 1500; % Upper limit of fixation duration (ms)
 timing.stimulusDuration = 7.0; % Stimulus presentation duration (seconds)
-timing.inputDuration = 3.0; % Input period duration (seconds)
+timing.inputDuration = 5.0; % Input period duration (seconds)
 timing.crossAppearTime = 5.0; % Time into stimulus when cross appears (seconds)
 timing.crossDuration = 1.0 + rand() * 0.5; % Cross duration: 1.0-1.5s (randomized)
 
@@ -590,7 +591,7 @@ for trl = 1:exp.nTrials
     if enableScreenshots
         Screen('FillRect', ptbWindow, backgroundColorGray);
         promptText = 'Enter the sum of BLACK numbers:';
-        Screen('TextSize', ptbWindow, 30);
+        Screen('TextSize', ptbWindow, 20);
         [textBounds] = Screen('TextBounds', ptbWindow, promptText);
         textWidth = textBounds(3) - textBounds(1);
         Screen('DrawText', ptbWindow, promptText, ...
@@ -625,7 +626,7 @@ for trl = 1:exp.nTrials
         promptText = 'Enter the sum of BLACK numbers:';
         inputDisplayText = [promptText ' ' inputString];
         
-        Screen('TextSize', ptbWindow, 30);
+        Screen('TextSize', ptbWindow, 20); % Reduced text size
         [textBounds] = Screen('TextBounds', ptbWindow, inputDisplayText);
         textWidth = textBounds(3) - textBounds(1);
         Screen('DrawText', ptbWindow, inputDisplayText, ...
@@ -650,18 +651,8 @@ for trl = 1:exp.nTrials
             if keyIsDown
                 keyPressed = false;
                 
-                % Check for number keys
-                for i = 0:9
-                    if keyCode(numKeys(i+1))
-                        inputString = [inputString num2str(i)];
-                        lastKeyTime = currentTime;
-                        keyPressed = true;
-                        break;
-                    end
-                end
-                
-                % Check for backspace
-                if ~keyPressed && keyCode(backspaceKeyCode)
+                % Check for backspace first
+                if keyCode(backspaceKeyCode)
                     if length(inputString) > 0
                         inputString = inputString(1:end-1);
                     end
@@ -669,7 +660,7 @@ for trl = 1:exp.nTrials
                     keyPressed = true;
                 end
                 
-                % Check for enter
+                % Check for enter (submit response)
                 if ~keyPressed && keyCode(enterKeyCode) && length(inputString) > 0
                     responseSubmitted = true;
                     responseTime = GetSecs - inputStartTime;
@@ -686,14 +677,47 @@ for trl = 1:exp.nTrials
                     end
                     break;
                 end
+                
+                % Check for any other key (allow all keys including letters)
+                if ~keyPressed
+                    % Get the key name
+                    keyName = KbName(keyCode);
+                    if iscell(keyName)
+                        keyName = keyName{1}; % Take first if multiple
+                    end
+                    
+                    % Process key if it's a single character or space
+                    if ~isempty(keyName)
+                        if length(keyName) == 1
+                            % Single character key - add to input string
+                            inputString = [inputString keyName];
+                            lastKeyTime = currentTime;
+                        elseif strcmpi(keyName, 'space')
+                            inputString = [inputString ' '];
+                            lastKeyTime = currentTime;
+                        end
+                    end
+                end
             end
         end
         
         WaitSecs(0.01); % Small delay to prevent excessive CPU usage
     end
     
-    % If no response submitted, use empty or last entered value
+    % If no response submitted, show "Too Slow!" message
     if ~responseSubmitted
+        % Show "Too Slow!" message
+        Screen('FillRect', ptbWindow, backgroundColorGray);
+        Screen('TextSize', ptbWindow, 20);
+        slowText = 'Too Slow!';
+        [textBounds] = Screen('TextBounds', ptbWindow, slowText);
+        textWidth = textBounds(3) - textBounds(1);
+        Screen('DrawText', ptbWindow, slowText, ...
+               screen.centerX - textWidth/2, screen.centerY, black);
+        Screen('Flip', ptbWindow);
+        WaitSecs(1.5); % Show message for 1.5 seconds
+        
+        % Record response
         if length(inputString) > 0
             data.participantSum(trl) = str2double(inputString);
         else
