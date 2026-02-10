@@ -1,10 +1,11 @@
 %% IAB Task (Inattentional Blindness)
 % This code requires PsychToolbox. https://psychtoolbox.org
 %
-% Task: Participants add together all digits moving on screen
-% - Two conditions: 4 digits or 8 digits per trial
-% - Digits move randomly and bounce off edges
-% - Cross appears in 1/3 of trials (moving across screen)
+% Task: Participants sum only BLACK digits (ignore white digits)
+% - Always 8 numbers per trial (0-9)
+% - Numbers are black or white
+% - Two groups: Group A (focused) vs Group B (expanded attention)
+% - Cross appears in 1/3 of trials (offset to side, appears 5s into 7s stimulus)
 % - Cross does NOT appear in practice trials or first 2 real trials
 
 %% Initialize EEG and ET
@@ -14,6 +15,7 @@ if TRAINING == 1
     disp('START OF PRACTICE BLOCK');
 else
     disp('START OF MAIN TASK');
+    fprintf('Group: %s (%s)\n', subject.group, subject.groupName);
 end
 
 % Calibrate ET (Tobii Pro Fusion)
@@ -60,9 +62,6 @@ INPUT_START = 22; % Trigger for start of input period
 CROSS_APPEAR = 30; % Trigger when cross appears
 CROSS_DISAPPEAR = 31; % Trigger when cross disappears
 
-CONDITION_4_DIGITS = 40; % Trigger for 4-digit condition
-CONDITION_8_DIGITS = 41; % Trigger for 8-digit condition
-
 RESPONSE_SUBMITTED = 50; % Trigger when response is submitted
 
 PRACTICE_END = 75; % End of practice block
@@ -70,7 +69,7 @@ TASK_END = 90; % Trigger for ET cutting
 
 %% Set up experiment parameters
 % Block and Trial Number
-exp.nTrlPractice = 5; % n practice trials
+exp.nTrlPractice = 3; % n practice trials
 exp.nTrlMain = 100; % n main task trials
 
 if TRAINING == 1
@@ -79,29 +78,46 @@ else
     exp.nTrials = exp.nTrlMain;
 end
 
-% Enable (= 1) or disable (= 0) screenshots
-enableScreenshots = 1;
+%% Screenshot and Video Options
+% Enable (= 1) or disable (= 0) screenshots of key frames
+enableScreenshots = 1; % Screenshots of: fixation, stimulus start, cross appear, input screen
+
+% Enable (= 1) or disable (= 0) video recording per trial
+enableVideo = 1; % Records full trial (fixation + stimulus + input)
 
 %% Set up text parameters
-% Define startExperimentText
+% Define startExperimentText based on group
 if TRAINING == 1
     startExperimentText = [
         'PRACTICE TRIALS \n\n' ...
-        'You will see digits moving around the screen. \n\n' ...
-        'Your task is to add together ALL the numbers \n\n' ...
-        'you see and enter the sum. \n\n' ...
+        'You will see black and white digits moving around the screen. \n\n' ...
+        'Your task is to add together ONLY the BLACK numbers \n\n' ...
+        'and ignore the white ones. \n\n' ...
+        'At the end, you will be asked for the sum. \n\n' ...
         '\n\n' ...
         'Press any key to continue...'];
     loadingText = 'Loading PRACTICE...';
 else
-    startExperimentText = [
-        'You will see digits moving around the screen. \n\n' ...
-        'Your task is to add together ALL the numbers \n\n' ...
-        'you see and enter the sum. \n\n' ...
-        'Sometimes there will be 4 digits, sometimes 8. \n\n' ...
-        'Focus on the center of the screen. \n\n' ...
-        '\n\n' ...
-        'Press any key to continue...'];
+    % Group-specific instructions
+    if subject.group == 'A'
+        % Group A: Focused attention
+        startExperimentText = [
+            'Your task is to add together the BLACK numbers. \n\n' ...
+            'Ignore the white numbers. \n\n' ...
+            'At the end you will be asked for the result. \n\n' ...
+            '\n\n' ...
+            'Press any key to continue...'];
+    else
+        % Group B: Expanded attention
+        startExperimentText = [
+            'Your task is to calculate the sum of the BLACK numbers \n\n' ...
+            'by adding them together. Ignore the white numbers. \n\n' ...
+            'Additionally, visual changes may occur during the task. \n\n' ...
+            'Please pay attention to everything that appears on the screen. \n\n' ...
+            'At the end you will be asked for the result. \n\n' ...
+            '\n\n' ...
+            'Press any key to continue...'];
+    end
     loadingText = 'Loading TASK...';
 end
 
@@ -194,13 +210,16 @@ fixPos = [screen.centerX, screen.centerY];
 % Temporal parameters
 timing.fixLower = 500; % Lower limit of fixation duration (ms)
 timing.fixUpper = 1500; % Upper limit of fixation duration (ms)
-timing.stimulusDuration = 3.0; % Stimulus presentation duration (seconds)
+timing.stimulusDuration = 7.0; % Stimulus presentation duration (seconds)
 timing.inputDuration = 3.0; % Input period duration (seconds)
+timing.crossAppearTime = 5.0; % Time into stimulus when cross appears (seconds)
+timing.crossDuration = 1.0 + rand() * 0.5; % Cross duration: 1.0-1.5s (randomized)
 
 %% Digit parameters
 digitSize_dva = 1.0; % Size of digits in degrees of visual angle
 digitSize_pix = round(digitSize_dva * screen.ppd);
-digitColor = [50 50 50]; % Slightly darker than background (gray background is 192)
+digitColorBlack = [0 0 0]; % Black digits (to be summed)
+digitColorWhite = [255 255 255]; % White digits (to be ignored)
 
 % Movement parameters
 digitSpeed = 2; % cm/s (will be converted to pixels)
@@ -211,23 +230,17 @@ margin = 50; % pixels
 moveBounds = [margin, margin, screen.resolutionX - margin, screen.resolutionY - margin];
 
 %% Cross parameters (for unexpected cross)
-crossSize_dva = 1.0; % Size of cross in degrees of visual angle
+crossSize_dva = 1.0; % Size of cross in degrees of visual angle (same or slightly larger than digits)
 crossSize_pix = round(crossSize_dva * screen.ppd);
 crossColor = [120 120 120]; % Grayish color (slightly darker than background)
-
-% Cross movement path (enters from right, exits left, moves horizontally)
-crossStartX = screen.resolutionX + crossSize_pix;
-crossEndX = -crossSize_pix;
-crossY = screen.centerY; % Moves through center
 
 % Cross horizontal/vertical extent
 crossExtent = crossSize_pix / 2;
 crossCoords = [-crossExtent crossExtent 0 0; 0 0 -crossExtent crossExtent];
 
-% Cross movement speed (time-based)
-crossTravelDistance = crossStartX - crossEndX; % Total distance to travel
-crossTravelDuration = 1.5; % Seconds to cross screen
-crossSpeed_pixPerSec = crossTravelDistance / crossTravelDuration;
+% Cross movement speed (4.32 degrees per second)
+crossSpeed_degPerSec = 4.32;
+crossSpeed_pixPerSec = crossSpeed_degPerSec * screen.ppd;
 
 % Use realtime priority for better timing precision
 priorityLevel = MaxPriority(ptbWindow);
@@ -235,10 +248,12 @@ Priority(priorityLevel);
 
 %% Create data structure for preallocating data
 data = struct;
-data.nDigits(1, exp.nTrials) = NaN; % Number of digits in trial (4 or 8)
+data.nDigits(1, exp.nTrials) = NaN; % Number of digits in trial (always 8)
 data.digits(1, exp.nTrials) = {[]}; % Cell array to store which digits appeared
+data.digitColors(1, exp.nTrials) = {[]}; % Cell array to store color of each digit (1=black, 0=white)
 data.crossPresent(1, exp.nTrials) = NaN; % Binary: was cross present?
-data.correctSum(1, exp.nTrials) = NaN; % Correct sum of digits
+data.crossPosition(1, exp.nTrials) = {[]}; % Cross position [x, y] if present
+data.correctSum(1, exp.nTrials) = NaN; % Correct sum of BLACK digits only
 data.participantSum(1, exp.nTrials) = NaN; % What participant entered
 data.binaryAccuracy(1, exp.nTrials) = NaN; % Correct (1) or incorrect (0)
 data.continuousAccuracy(1, exp.nTrials) = NaN; % Percentage deviation from correct sum
@@ -258,15 +273,6 @@ else
     availableTrials = 3:exp.nTrials;
     selectedTrials = randperm(length(availableTrials), nCrossTrials);
     crossTrials(availableTrials(selectedTrials)) = 1;
-end
-
-% Determine condition (4 or 8 digits) for each trial
-if TRAINING == 1
-    % Mix of conditions in practice
-    conditionSequence = [4 8 4 8 4]; % Alternating for practice
-else
-    % Randomly assign 4 or 8 digits to each trial
-    conditionSequence = randi([4 8], 1, exp.nTrials);
 end
 
 %% Show task instruction text
@@ -300,6 +306,19 @@ end
 HideCursor(whichScreen); % Make sure to hide cursor from participant screen
 timing.startTime = datestr(now, 'dd/mm/yy-HH:MM:SS'); % Measure duration
 
+% Set up paths for screenshots and videos (after subject.ID is available)
+if enableScreenshots || enableVideo
+    subjectID = num2str(subject.ID);
+    SCREENSHOT_PATH = fullfile(DATA_PATH, subjectID, 'screenshots');
+    VIDEO_PATH = fullfile(DATA_PATH, subjectID, 'videos');
+    if enableScreenshots && ~exist(SCREENSHOT_PATH, 'dir')
+        mkdir(SCREENSHOT_PATH);
+    end
+    if enableVideo && ~exist(VIDEO_PATH, 'dir')
+        mkdir(VIDEO_PATH);
+    end
+end
+
 %% Experiment Loop %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 clc;
 if TRAINING == 1
@@ -312,7 +331,7 @@ for trl = 1:exp.nTrials
     tic;
     
     % Store trial condition
-    data.nDigits(trl) = conditionSequence(trl);
+    data.nDigits(trl) = 8; % Always 8 digits
     data.crossPresent(trl) = crossTrials(trl);
     
     %% Present jittered fixation cross
@@ -326,6 +345,23 @@ for trl = 1:exp.nTrials
     Screen('DrawLines', ptbWindow, fixCoords, fixationLineWidth, fixationColorWhite, ...
            [screen.centerX screen.centerY], 2);
     Screen('Flip', ptbWindow);
+    
+    % Screenshot: Fixation cross
+    if enableScreenshots
+        screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_fixation.png', trl));
+        screenshot(screenshotFilename, ptbWindow, enableScreenshots);
+    end
+    
+    % Initialize video recording for this trial
+    if enableVideo
+        videoFilename = fullfile(VIDEO_PATH, sprintf('trial%03d.avi', trl));
+        videoWriter = VideoWriter(videoFilename, 'Motion JPEG AVI');
+        videoWriter.FrameRate = 30; % Record at 30 fps (reduced from screen refresh rate)
+        videoWriter.Quality = 90;
+        open(videoWriter);
+        lastVideoFrameTime = GetSecs;
+        videoFrameInterval = 1/30; % Capture every 1/30 second
+    end
     
     % Send fixation trigger
     TRIGGER = FIXCROSS;
@@ -341,10 +377,22 @@ for trl = 1:exp.nTrials
     WaitSecs(timing.fixDuration(trl));
     
     %% Initialize digit positions and movements
-    nDigits = data.nDigits(trl);
+    nDigits = 8; % Always 8 digits
     digits = randi([0 9], 1, nDigits); % Random digits 0-9
+    
+    % Randomly assign colors: half black (to be summed), half white (to be ignored)
+    % Ensure at least some black digits
+    nBlack = randi([3 5]); % 3-5 black digits
+    digitColors = zeros(1, nDigits);
+    blackIndices = randperm(nDigits, nBlack);
+    digitColors(blackIndices) = 1; % 1 = black, 0 = white
+    
     data.digits{trl} = digits;
-    data.correctSum(trl) = sum(digits);
+    data.digitColors{trl} = digitColors;
+    
+    % Calculate correct sum (only black digits)
+    blackDigits = digits(digitColors == 1);
+    data.correctSum(trl) = sum(blackDigits);
     
     % Initialize positions (random starting positions)
     digitPos = zeros(nDigits, 2);
@@ -358,13 +406,31 @@ for trl = 1:exp.nTrials
         digitVel(d, 2) = sin(angle) * digitSpeed_pix;
     end
     
-    % Store last frame time for time-based movement
-    lastFrameTime = stimulusStartTime;
-    
-    % Initialize cross position and movement
-    crossX = crossStartX;
+    % Initialize cross position and movement (if present)
+    crossX = NaN;
+    crossY = NaN;
     crossVisible = false;
     crossStartTime = NaN;
+    crossEndTime = NaN;
+    
+    if data.crossPresent(trl) == 1
+        % Random offset position (to the side, not center)
+        % Randomly choose left or right side
+        sideOffset = randi([2, 4]) * screen.ppd; % 2-4 degrees offset
+        if rand > 0.5
+            crossX = screen.centerX + sideOffset; % Right side
+        else
+            crossX = screen.centerX - sideOffset; % Left side
+        end
+        % Random vertical position (within reasonable bounds)
+        crossY = screen.centerY + (rand - 0.5) * 3 * screen.ppd; % ±1.5 degrees vertically
+        data.crossPosition{trl} = [crossX, crossY];
+    else
+        data.crossPosition{trl} = [NaN, NaN];
+    end
+    
+    % Store last frame time for time-based movement
+    lastFrameTime = GetSecs;
     
     % Send trial start trigger
     TRIGGER = TRIAL_START;
@@ -374,19 +440,6 @@ for trl = 1:exp.nTrials
     else
         Eyelink('Message', num2str(TRIGGER));
         Eyelink('command', 'record_status_message "TRIAL_START"');
-        sendtrigger(TRIGGER,port,SITE,stayup);
-    end
-    
-    % Send condition trigger
-    if nDigits == 4
-        TRIGGER = CONDITION_4_DIGITS;
-    else
-        TRIGGER = CONDITION_8_DIGITS;
-    end
-    if TRAINING == 1
-        Eyelink('Message', num2str(TRIGGER));
-    else
-        Eyelink('Message', num2str(TRIGGER));
         sendtrigger(TRIGGER,port,SITE,stayup);
     end
     
@@ -402,7 +455,32 @@ for trl = 1:exp.nTrials
         sendtrigger(TRIGGER,port,SITE,stayup);
     end
     
-    %% Stimulus presentation loop (3000ms)
+    % Screenshot: Stimulus start (number cloud)
+    if enableScreenshots
+        % Draw first frame of stimulus for screenshot
+        Screen('FillRect', ptbWindow, backgroundColorGray);
+        for d = 1:nDigits
+            digitText = num2str(digits(d));
+            Screen('TextSize', ptbWindow, digitSize_pix);
+            [textBounds] = Screen('TextBounds', ptbWindow, digitText);
+            textWidth = textBounds(3) - textBounds(1);
+            textHeight = textBounds(4) - textBounds(2);
+            if digitColors(d) == 1
+                Screen('DrawText', ptbWindow, digitText, ...
+                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
+                       digitColorBlack);
+            else
+                Screen('DrawText', ptbWindow, digitText, ...
+                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
+                       digitColorWhite);
+            end
+        end
+        Screen('Flip', ptbWindow);
+        screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_stimulus_start.png', trl));
+        screenshot(screenshotFilename, ptbWindow, enableScreenshots);
+    end
+    
+    %% Stimulus presentation loop (7000ms)
     frameCount = 0;
     while (GetSecs - stimulusStartTime) < timing.stimulusDuration
         % Calculate time delta for smooth movement
@@ -429,25 +507,35 @@ for trl = 1:exp.nTrials
                 digitPos(d, 2) = max(moveBounds(2), min(moveBounds(4), digitPos(d, 2)));
             end
             
-            % Draw digit
+            % Draw digit with appropriate color
             digitText = num2str(digits(d));
             Screen('TextSize', ptbWindow, digitSize_pix);
             [textBounds] = Screen('TextBounds', ptbWindow, digitText);
             textWidth = textBounds(3) - textBounds(1);
             textHeight = textBounds(4) - textBounds(2);
-            Screen('DrawText', ptbWindow, digitText, ...
-                   digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
-                   digitColor);
+            
+            if digitColors(d) == 1
+                % Black digit
+                Screen('DrawText', ptbWindow, digitText, ...
+                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
+                       digitColorBlack);
+            else
+                % White digit
+                Screen('DrawText', ptbWindow, digitText, ...
+                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
+                       digitColorWhite);
+            end
         end
         
         % Update and draw cross if present
         if data.crossPresent(trl) == 1
             elapsedTime = GetSecs - stimulusStartTime;
-            % Cross appears 0.5 seconds into stimulus presentation and moves for 1.5 seconds
-            if elapsedTime >= 0.5 && elapsedTime < 2.0
+            
+            % Cross appears at timing.crossAppearTime (5s)
+            if elapsedTime >= timing.crossAppearTime && elapsedTime < (timing.crossAppearTime + timing.crossDuration)
                 if ~crossVisible
                     crossVisible = true;
-                    crossStartTime = elapsedTime;
+                    crossStartTime = GetSecs;
                     % Send cross appear trigger
                     TRIGGER = CROSS_APPEAR;
                     if TRAINING == 1
@@ -458,16 +546,18 @@ for trl = 1:exp.nTrials
                     end
                 end
                 
-                % Update cross position (moves from right to left)
-                % Cross should traverse screen width in crossTravelDuration seconds
-                crossTravelTime = elapsedTime - 0.5; % Time since cross appeared
-                crossX = crossStartX - crossTravelTime * crossSpeed_pixPerSec;
-                
-                % Draw cross
+                % Draw cross at fixed position (offset to side)
                 Screen('DrawLines', ptbWindow, crossCoords, fixationLineWidth, ...
                        crossColor, [crossX crossY], 2);
-            elseif elapsedTime >= 2.0 && crossVisible
+                
+                % Screenshot: Cross appear (only once when it first appears)
+                if enableScreenshots && (elapsedTime - timing.crossAppearTime) < 0.1
+                    screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_cross_appear.png', trl));
+                    screenshot(screenshotFilename, ptbWindow, enableScreenshots);
+                end
+            elseif elapsedTime >= (timing.crossAppearTime + timing.crossDuration) && crossVisible
                 crossVisible = false;
+                crossEndTime = GetSecs;
                 % Send cross disappear trigger
                 TRIGGER = CROSS_DISAPPEAR;
                 if TRAINING == 1
@@ -481,10 +571,34 @@ for trl = 1:exp.nTrials
         
         Screen('Flip', ptbWindow);
         frameCount = frameCount + 1;
+        
+        % Capture frame for video (at reduced frame rate)
+        if enableVideo
+            currentTime = GetSecs;
+            if (currentTime - lastVideoFrameTime) >= videoFrameInterval
+                frameImage = Screen('GetImage', ptbWindow);
+                writeVideo(videoWriter, frameImage);
+                lastVideoFrameTime = currentTime;
+            end
+        end
     end
     
     %% Input period (3000ms)
     inputStartTime = GetSecs;
+    
+    % Screenshot: Input screen (before any input)
+    if enableScreenshots
+        Screen('FillRect', ptbWindow, backgroundColorGray);
+        promptText = 'Enter the sum of BLACK numbers:';
+        Screen('TextSize', ptbWindow, 30);
+        [textBounds] = Screen('TextBounds', ptbWindow, promptText);
+        textWidth = textBounds(3) - textBounds(1);
+        Screen('DrawText', ptbWindow, promptText, ...
+               screen.centerX - textWidth/2, screen.centerY, black);
+        Screen('Flip', ptbWindow);
+        screenshotFilename = fullfile(SCREENSHOT_PATH, sprintf('trial%03d_input.png', trl));
+        screenshot(screenshotFilename, ptbWindow, enableScreenshots);
+    end
     
     % Send input start trigger
     TRIGGER = INPUT_START;
@@ -508,7 +622,7 @@ for trl = 1:exp.nTrials
         Screen('FillRect', ptbWindow, backgroundColorGray);
         
         % Display input prompt and current input
-        promptText = 'Enter the sum:';
+        promptText = 'Enter the sum of BLACK numbers:';
         inputDisplayText = [promptText ' ' inputString];
         
         Screen('TextSize', ptbWindow, 30);
@@ -518,6 +632,16 @@ for trl = 1:exp.nTrials
                screen.centerX - textWidth/2, screen.centerY, black);
         
         Screen('Flip', ptbWindow);
+        
+        % Capture frame for video during input phase (at reduced frame rate)
+        if enableVideo
+            currentTime = GetSecs;
+            if (currentTime - lastVideoFrameTime) >= videoFrameInterval
+                frameImage = Screen('GetImage', ptbWindow);
+                writeVideo(videoWriter, frameImage);
+                lastVideoFrameTime = currentTime;
+            end
+        end
         
         % Check for keyboard input (only if enough time has passed since last key)
         currentTime = GetSecs;
@@ -606,6 +730,12 @@ for trl = 1:exp.nTrials
     data.reactionTime(trl) = responseTime;
     data.trialDuration(trl) = toc;
     
+    % Close video recording for this trial
+    if enableVideo
+        close(videoWriter);
+        fprintf('Video saved: %s\n', videoFilename);
+    end
+    
     %% Trial Info CW output
     overall_accuracy = round((nansum(data.binaryAccuracy(1:trl))/trl)*100);
     crossInfo = '';
@@ -615,8 +745,9 @@ for trl = 1:exp.nTrials
         crossInfo = ' | Cross: NO';
     end
     
+    nBlackDigits = sum(data.digitColors{trl});
     disp(['Trial ' num2str(trl) '/' num2str(exp.nTrials) ...
-          ' | N Digits: ' num2str(nDigits) ...
+          ' | Black Digits: ' num2str(nBlackDigits) ...
           crossInfo ...
           ' | Correct Sum: ' num2str(correctSum) ...
           ' | Participant Sum: ' num2str(participantSum) ...
@@ -654,6 +785,67 @@ else
     sendtrigger(TASK_END,port,SITE,stayup);
 end
 
+%% Perception Questions (only after main task, not practice)
+perceptionData = struct;
+if TRAINING == 0
+    % Show perception questions
+    Screen('FillRect', ptbWindow, backgroundColorGray);
+    
+    questions = {
+        'Ist Ihnen etwas Ungewöhnliches aufgefallen (während des Zusammenzählens der Ziffern)?';
+        'Haben Sie abgesehen von den Zahlen sonst noch etwas gesehen?';
+        'Haben Sie ein Objekt bemerkt, das nichts mit Zahlen zu tun hatte?';
+        'Haben Sie ein Kreuz gesehen?'
+    };
+    
+    questionKeys = {'Q1', 'Q2', 'Q3', 'Q4'};
+    yesKeyCode = KbName('Y');
+    noKeyCode = KbName('N');
+    
+    for q = 1:length(questions)
+        questionText = questions{q};
+        responseGiven = false;
+        response = NaN; % 1 = yes, 0 = no
+        
+        while ~responseGiven
+            Screen('FillRect', ptbWindow, backgroundColorGray);
+            
+            % Display question
+            Screen('TextSize', ptbWindow, 25);
+            DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 50, black);
+            
+            % Display instructions
+            instructionText = 'Press Y for YES, N for NO';
+            Screen('TextSize', ptbWindow, 20);
+            DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 50, black);
+            
+            Screen('Flip', ptbWindow);
+            
+            % Check for response
+            [keyIsDown, secs, keyCode] = KbCheck(-1);
+            if keyIsDown
+                if keyCode(yesKeyCode)
+                    response = 1;
+                    responseGiven = true;
+                    WaitSecs(0.3);
+                elseif keyCode(noKeyCode)
+                    response = 0;
+                    responseGiven = true;
+                    WaitSecs(0.3);
+                end
+            end
+            WaitSecs(0.01);
+        end
+        
+        perceptionData.(questionKeys{q}) = response;
+        if response == 1
+            fprintf('Question %d: YES\n', q);
+        else
+            fprintf('Question %d: NO\n', q);
+        end
+    end
+end
+
 %% Record block duration
 timing.endTime = datestr(now, 'dd/mm/yy-HH:MM:SS');
 % Convert to datetime objects
@@ -680,8 +872,11 @@ saves.experiment = exp;
 saves.screen = screen;
 saves.startExperimentText = startExperimentText;
 saves.subjectID = subjectID;
-saves.subject = subject;
+saves.subject = subject; % Includes group assignment
 saves.timing = timing;
+if TRAINING == 0
+    saves.perceptionData = perceptionData; % Perception question responses
+end
 
 % Save triggers
 trigger = struct;
@@ -694,8 +889,6 @@ trigger.STIMULUS_START = STIMULUS_START;
 trigger.INPUT_START = INPUT_START;
 trigger.CROSS_APPEAR = CROSS_APPEAR;
 trigger.CROSS_DISAPPEAR = CROSS_DISAPPEAR;
-trigger.CONDITION_4_DIGITS = CONDITION_4_DIGITS;
-trigger.CONDITION_8_DIGITS = CONDITION_8_DIGITS;
 trigger.RESPONSE_SUBMITTED = RESPONSE_SUBMITTED;
 trigger.PRACTICE_END = PRACTICE_END;
 trigger.TASK_END = TASK_END;
