@@ -55,7 +55,7 @@ exp.nTrlMain = 100; % n main task trials
 % - Reading instructions: ~30 seconds
 % - Practice trials: 3 trials × ~13 seconds = ~40 seconds (+ feedback ~1 min total)
 % - Main task: 100 trials × ~13 seconds = ~22 minutes
-% - Perception questions: 4 questions × ~10 seconds = ~40 seconds
+% - Perception questions: 5 questions × ~10 seconds = ~50 seconds (Q4 is free text, may take longer)
 % - Breaks/transitions: ~1 minute
 % Total: ~25-30 minutes per participant
 
@@ -849,53 +849,138 @@ if TRAINING == 0
         'Ist Ihnen etwas Ungewöhnliches aufgefallen (während des Zusammenzählens der Ziffern)?';
         'Haben Sie abgesehen von den Zahlen sonst noch etwas gesehen?';
         'Haben Sie ein Objekt bemerkt, das nichts mit Zahlen zu tun hatte?';
-        'Haben Sie ein Kreuz gesehen?'
+        'Was haben Sie gesehen? (Bitte beschreiben Sie alles, was Ihnen aufgefallen ist)';
+        'Haben Sie einen Affen gesehen?'
     };
     
-    questionKeys = {'Q1', 'Q2', 'Q3', 'Q4'};
+    questionKeys = {'Q1', 'Q2', 'Q3', 'Q4', 'Q5'};
     yesKeyCode = KbName('Y');
     noKeyCode = KbName('N');
+    enterKeyCode = KbName('Return');
+    backspaceKeyCode = KbName('BackSpace');
     
     for q = 1:length(questions)
         questionText = questions{q};
         responseGiven = false;
-        response = NaN; % 1 = yes, 0 = no
         
-        while ~responseGiven
-            Screen('FillRect', ptbWindow, backgroundColorGray);
+        if q == 4
+            % Question 4: Free text input
+            inputString = '';
+            response = ''; % Will store the text response
+            lastKeyTime = 0;
+            keyDebounceTime = 0.1; % Prevent key repeat
             
-            % Display question
-            Screen('TextSize', ptbWindow, 25);
-            DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 50, black);
-            
-            % Display instructions
-            instructionText = 'Press Y for YES, N for NO';
-            Screen('TextSize', ptbWindow, 20);
-            DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 50, black);
-            
-            Screen('Flip', ptbWindow);
-            
-            % Check for response
-            [keyIsDown, secs, keyCode] = KbCheck(-1);
-            if keyIsDown
-                if keyCode(yesKeyCode)
-                    response = 1;
-                    responseGiven = true;
-                    WaitSecs(0.3);
-                elseif keyCode(noKeyCode)
-                    response = 0;
-                    responseGiven = true;
-                    WaitSecs(0.3);
+            while ~responseGiven
+                Screen('FillRect', ptbWindow, backgroundColorGray);
+                
+                % Display question
+                Screen('TextSize', ptbWindow, 25);
+                DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 100, black);
+                
+                % Display current input
+                Screen('TextSize', ptbWindow, 20);
+                if ~isempty(inputString)
+                    DrawFormattedText(ptbWindow, inputString, 'center', screen.centerY, black);
+                else
+                    DrawFormattedText(ptbWindow, '_', 'center', screen.centerY, [150 150 150]);
                 end
+                
+                % Display instructions
+                instructionText = 'Type your answer and press ENTER to confirm';
+                Screen('TextSize', ptbWindow, 18);
+                DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 100, black);
+                
+                Screen('Flip', ptbWindow);
+                
+                % Check for keyboard input (only if enough time has passed since last key)
+                currentTime = GetSecs;
+                if (currentTime - lastKeyTime) >= keyDebounceTime
+                    [keyIsDown, secs, keyCode] = KbCheck(-1);
+                    if keyIsDown
+                        keyProcessed = false;
+                        
+                        % Check for Enter key
+                        if ~keyProcessed && any(keyCode(enterKeyCode)) && length(inputString) > 0
+                            response = inputString;
+                            responseGiven = true;
+                            WaitSecs(0.3);
+                            keyProcessed = true;
+                        end
+                        
+                        % Check for Backspace
+                        if ~keyProcessed && any(keyCode(backspaceKeyCode))
+                            if length(inputString) > 0
+                                inputString = inputString(1:end-1);
+                            end
+                            lastKeyTime = currentTime;
+                            keyProcessed = true;
+                        end
+                        
+                        % Check for any other key (allow all keys including letters)
+                        if ~keyProcessed
+                            % Get all pressed keys
+                            pressedKeys = find(keyCode);
+                            if ~isempty(pressedKeys)
+                                % Process first key found
+                                keyName = KbName(pressedKeys(1));
+                                % Handle single character keys (letters, numbers)
+                                if length(keyName) == 1
+                                    inputString = [inputString, keyName];
+                                    lastKeyTime = currentTime;
+                                elseif strcmp(keyName, 'space')
+                                    inputString = [inputString, ' '];
+                                    lastKeyTime = currentTime;
+                                end
+                            end
+                        end
+                    end
+                end
+                WaitSecs(0.01);
             end
-            WaitSecs(0.01);
-        end
-        
-        perceptionData.(questionKeys{q}) = response;
-        if response == 1
-            fprintf('Question %d: YES\n', q);
+            
+            perceptionData.(questionKeys{q}) = response;
+            fprintf('Question %d (Free text): %s\n', q, response);
+            
         else
-            fprintf('Question %d: NO\n', q);
+            % Questions 1-3 and 5: Yes/No responses
+            response = NaN; % 1 = yes, 0 = no
+            
+            while ~responseGiven
+                Screen('FillRect', ptbWindow, backgroundColorGray);
+                
+                % Display question
+                Screen('TextSize', ptbWindow, 25);
+                DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 50, black);
+                
+                % Display instructions
+                instructionText = 'Press Y for YES, N for NO';
+                Screen('TextSize', ptbWindow, 20);
+                DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 50, black);
+                
+                Screen('Flip', ptbWindow);
+                
+                % Check for response
+                [keyIsDown, secs, keyCode] = KbCheck(-1);
+                if keyIsDown
+                    if keyCode(yesKeyCode)
+                        response = 1;
+                        responseGiven = true;
+                        WaitSecs(0.3);
+                    elseif keyCode(noKeyCode)
+                        response = 0;
+                        responseGiven = true;
+                        WaitSecs(0.3);
+                    end
+                end
+                WaitSecs(0.01);
+            end
+            
+            perceptionData.(questionKeys{q}) = response;
+            if response == 1
+                fprintf('Question %d: YES\n', q);
+            else
+                fprintf('Question %d: NO\n', q);
+            end
         end
     end
 end
