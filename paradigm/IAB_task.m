@@ -225,7 +225,7 @@ distractorSpeed = 2.5; % cm/s (same as digits)
 distractorSpeed_pix = distractorSpeed * (screen.resolutionX / screen.width); % Convert to pixels per second
 
 % Load monkey image (must be done after window is opened)
-monkeyImagePath = '/Users/Arne/Documents/GitHub/IAB/paradigm/monkey.png';
+monkeyImagePath = '/home/methlab/Desktop/IAB/monkey.png';
 if ~exist(monkeyImagePath, 'file')
     error('Monkey image not found at: %s', monkeyImagePath);
 end
@@ -236,21 +236,33 @@ end
 [origHeight, origWidth, ~] = size(monkeyImage);
 aspectRatio = origWidth / origHeight;
 if aspectRatio > 1
-    % Wider than tall
     newWidth = distractorSize_pix;
     newHeight = round(distractorSize_pix / aspectRatio);
 else
-    % Taller than wide or square
     newHeight = distractorSize_pix;
     newWidth = round(distractorSize_pix * aspectRatio);
 end
 monkeyImage = imresize(monkeyImage, [newHeight, newWidth]);
+
+% Handle transparency: combine RGB with alpha channel into RGBA
 if ~isempty(alpha)
     alpha = imresize(alpha, [newHeight, newWidth]);
+    % Create RGBA image (4th channel = alpha for transparency)
+    monkeyImageRGBA = cat(3, monkeyImage, alpha);
+else
+    % No alpha channel: replace background color (black/near-black) with gray background
+    % Convert to grayscale to detect background pixels
+    grayImg = rgb2gray(monkeyImage);
+    % Create alpha: pixels that are very dark AND near the edges are background
+    alphaChannel = uint8(255 * ones(newHeight, newWidth));
+    % Make near-white pixels transparent (the white background)
+    whiteMask = grayImg > 240;
+    alphaChannel(whiteMask) = 0;
+    monkeyImageRGBA = cat(3, monkeyImage, alphaChannel);
 end
 
-% Create texture from image
-monkeyTexture = Screen('MakeTexture', ptbWindow, monkeyImage);
+% Create texture from RGBA image (alpha channel enables transparency)
+monkeyTexture = Screen('MakeTexture', ptbWindow, monkeyImageRGBA);
 monkeyTextureSize = [newWidth, newHeight]; % Store size for drawing
 
 % Use realtime priority for better timing precision
@@ -267,7 +279,7 @@ data.crossPositionTime(1, exp.nTrials) = {[]}; % Timestamps for each position sa
 data.correctSum(1, exp.nTrials) = NaN; % Correct sum of BLACK digits only
 data.participantSum(1, exp.nTrials) = NaN; % What participant entered
 data.binaryAccuracy(1, exp.nTrials) = NaN; % Correct (1) or incorrect (0)
-data.continuousAccuracy(1, exp.nTrials) = NaN; % Percentage deviation from correct sum
+data.continuousAccuracy(1, exp.nTrials) = NaN; % 100% = perfect, 0% = maximally wrong
 data.reactionTime(1, exp.nTrials) = NaN; % Time from stimulus end to response submission
 data.trialDuration(1, exp.nTrials) = NaN; % Total trial duration
 
@@ -487,43 +499,7 @@ for trl = 1:exp.nTrials
         % Clear screen
         Screen('FillRect', ptbWindow, backgroundColorGray);
         
-        % Update and draw digits
-        for d = 1:nDigits
-            % Update position (time-based movement)
-            digitPos(d, 1) = digitPos(d, 1) + digitVel(d, 1) * deltaTime;
-            digitPos(d, 2) = digitPos(d, 2) + digitVel(d, 2) * deltaTime;
-            
-            % Bounce off edges
-            if digitPos(d, 1) <= moveBounds(1) || digitPos(d, 1) >= moveBounds(3)
-                digitVel(d, 1) = -digitVel(d, 1);
-                digitPos(d, 1) = max(moveBounds(1), min(moveBounds(3), digitPos(d, 1)));
-            end
-            if digitPos(d, 2) <= moveBounds(2) || digitPos(d, 2) >= moveBounds(4)
-                digitVel(d, 2) = -digitVel(d, 2);
-                digitPos(d, 2) = max(moveBounds(2), min(moveBounds(4), digitPos(d, 2)));
-            end
-            
-            % Draw digit with appropriate color
-            digitText = num2str(digits(d));
-            Screen('TextSize', ptbWindow, digitSize_pix);
-            [textBounds] = Screen('TextBounds', ptbWindow, digitText);
-            textWidth = textBounds(3) - textBounds(1);
-            textHeight = textBounds(4) - textBounds(2);
-            
-            if digitColors(d) == 1
-                % Black digit
-                Screen('DrawText', ptbWindow, digitText, ...
-                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
-                       digitColorBlack);
-            else
-                % White digit
-                Screen('DrawText', ptbWindow, digitText, ...
-                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
-                       digitColorWhite);
-            end
-        end
-        
-        % Update and draw distractor if present (moves randomly like digits)
+        % Update and draw distractor FIRST (background layer - digits go on top)
         if data.crossPresent(trl) == 1 && distractorVisible
             % Update distractor position (time-based movement, same as digits)
             distractorX = distractorX + distractorVel(1) * deltaTime;
@@ -559,8 +535,7 @@ for trl = 1:exp.nTrials
                 lastSampleTime = lastSampleTime + nSamplesToRecord * sampleInterval;
             end
             
-            % Draw monkey image (distractor)
-            % Calculate destination rectangle centered on distractor position
+            % Draw monkey image (distractor) - drawn BEFORE digits so digits appear on top
             destRect = [distractorX - monkeyTextureSize(1)/2, distractorY - monkeyTextureSize(2)/2, ...
                        distractorX + monkeyTextureSize(1)/2, distractorY + monkeyTextureSize(2)/2];
             Screen('DrawTexture', ptbWindow, monkeyTexture, [], destRect);
@@ -577,6 +552,42 @@ for trl = 1:exp.nTrials
                 TRIGGER = CROSS_APPEAR;
                 Eyelink('Message', num2str(TRIGGER));
                 Eyelink('command', 'record_status_message "DISTRACTOR_APPEAR"');
+            end
+        end
+        
+        % Update and draw digits (drawn AFTER distractor so they appear on top)
+        for d = 1:nDigits
+            % Update position (time-based movement)
+            digitPos(d, 1) = digitPos(d, 1) + digitVel(d, 1) * deltaTime;
+            digitPos(d, 2) = digitPos(d, 2) + digitVel(d, 2) * deltaTime;
+            
+            % Bounce off edges
+            if digitPos(d, 1) <= moveBounds(1) || digitPos(d, 1) >= moveBounds(3)
+                digitVel(d, 1) = -digitVel(d, 1);
+                digitPos(d, 1) = max(moveBounds(1), min(moveBounds(3), digitPos(d, 1)));
+            end
+            if digitPos(d, 2) <= moveBounds(2) || digitPos(d, 2) >= moveBounds(4)
+                digitVel(d, 2) = -digitVel(d, 2);
+                digitPos(d, 2) = max(moveBounds(2), min(moveBounds(4), digitPos(d, 2)));
+            end
+            
+            % Draw digit with appropriate color
+            digitText = num2str(digits(d));
+            Screen('TextSize', ptbWindow, digitSize_pix);
+            [textBounds] = Screen('TextBounds', ptbWindow, digitText);
+            textWidth = textBounds(3) - textBounds(1);
+            textHeight = textBounds(4) - textBounds(2);
+            
+            if digitColors(d) == 1
+                % Black digit
+                Screen('DrawText', ptbWindow, digitText, ...
+                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
+                       digitColorBlack);
+            else
+                % White digit
+                Screen('DrawText', ptbWindow, digitText, ...
+                       digitPos(d, 1) - textWidth/2, digitPos(d, 2) - textHeight/2, ...
+                       digitColorWhite);
             end
         end
         
@@ -744,15 +755,17 @@ for trl = 1:exp.nTrials
         data.binaryAccuracy(trl) = 0; % Incorrect
     end
     
-    % Continuous accuracy (percentage deviation)
+    % Continuous accuracy (100% = perfect, 0% = maximally wrong)
+    % Computed as: 100 - percentage deviation from correct sum
     if ~isnan(participantSum) && correctSum ~= 0
-        data.continuousAccuracy(trl) = abs((participantSum - correctSum) / correctSum) * 100;
+        deviation = abs((participantSum - correctSum) / correctSum) * 100;
+        data.continuousAccuracy(trl) = max(0, 100 - deviation); % Floor at 0%
     elseif ~isnan(participantSum) && correctSum == 0
         % Special case: correct sum is 0
         if participantSum == 0
-            data.continuousAccuracy(trl) = 0;
+            data.continuousAccuracy(trl) = 100;
         else
-            data.continuousAccuracy(trl) = 100; % Maximum deviation
+            data.continuousAccuracy(trl) = 0; % Completely wrong
         end
     else
         data.continuousAccuracy(trl) = NaN;
