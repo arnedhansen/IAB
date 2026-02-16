@@ -1,56 +1,40 @@
 %% Download Datafile from Eyelink Tracker
-% The filename needs to be present in the variable edfFile
-% filePath and edfFile should be defined in the calling function's workspace
-% This function uses evalin('caller') to access variables from the calling workspace
+% Variables filePath and edfFile must exist in the workspace
+% (set by calibrateET.m, available because all scripts share the same workspace)
 
-% Get filePath and edfFile from calling workspace
-try
-    filePath = evalin('caller', 'filePath');
-    edfFile = evalin('caller', 'edfFile');
-catch
-    error('filePath and edfFile must be defined in the calling function');
+% Verify required variables exist
+if ~exist('filePath', 'var') || ~exist('edfFile', 'var')
+    error('filePath and edfFile must be defined. Make sure calibrateET was called.');
 end
 
-% Ensure filePath directory exists
+% Ensure subject folder exists
 if ~exist(filePath, 'dir')
     mkdir(filePath);
 end
 
-% Set destination path for EDF file
-destinationPath = fullfile(filePath, edfFile);
+% Save current directory and change to subject folder
+% Eyelink('ReceiveFile') always downloads to the current working directory
+originalDir = pwd;
 
 try
-    fprintf('Receiving data file ''%s''\n', edfFile );
+    cd(filePath);
+    fprintf('Downloading EDF file ''%s'' to ''%s''\n', edfFile, filePath);
     
-    % Try to receive file directly to destination path
-    % Note: Eyelink('ReceiveFile', edfFile, destinationPath) may not be supported
-    % on all systems, so we'll try and fall back to moving the file if needed
-    try
-        status = Eyelink('ReceiveFile', edfFile, destinationPath);
-    catch
-        % If three-argument form doesn't work, use two-argument form
-        status = Eyelink('ReceiveFile', edfFile);
-    end
+    status = Eyelink('ReceiveFile');
     
     if status > 0
         fprintf('ReceiveFile status %d\n', status);
-        
-        % Check if file was downloaded to current directory instead of destination
-        if exist(edfFile, 'file') && ~exist(destinationPath, 'file')
-            % File was downloaded to current directory, move it to destination
-            movefile(edfFile, destinationPath);
-            fprintf('EDF file moved from current directory to: %s\n', filePath);
-        elseif exist(destinationPath, 'file')
-            fprintf('EDF file saved to: %s\n', filePath);
-        else
-            warning('EDF file download completed but file not found at expected location');
-        end
-    elseif status < 0
-        fprintf('Error receiving data file ''%s''\n', edfFile);
-    else
-        fprintf('No data file received (file may not exist on tracker)\n');
     end
-catch rdf
-    fprintf('Problem receiving data file ''%s''\n', edfFile );
-    rdf;
+    
+    % Verify the file arrived
+    if exist(fullfile(filePath, edfFile), 'file')
+        fprintf('EDF file saved: %s\n', fullfile(filePath, edfFile));
+    else
+        warning('EDF file not found at expected location: %s', fullfile(filePath, edfFile));
+    end
+    
+    cd(originalDir);
+catch ME
+    cd(originalDir);
+    fprintf('Problem receiving data file ''%s'': %s\n', edfFile, ME.message);
 end
