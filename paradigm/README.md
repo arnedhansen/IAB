@@ -96,8 +96,7 @@ For each trial, the following metrics are saved:
 - `crossPosition`: Cross position [x, y] if present, [NaN, NaN] if absent
 - `correctSum`: The correct sum of **black digits only**
 - `participantSum`: What the participant entered
-- `binaryAccuracy`: Correct (1) or incorrect (0)
-- `continuousAccuracy`: Percentage deviation from correct sum
+- `continuousAccuracy`: 100% = perfect, 0% = maximally wrong
 - `reactionTime`: Time from stimulus end to response submission
 - `inputTime`: Time spent in input period
 - `trialDuration`: Total trial duration

@@ -281,7 +281,6 @@ data.crossPosition(1, exp.nTrials) = {[]}; % Continuous cross position [x, y] sa
 data.crossPositionTime(1, exp.nTrials) = {[]}; % Timestamps for each position sample
 data.correctSum(1, exp.nTrials) = NaN; % Correct sum of BLACK digits only
 data.participantSum(1, exp.nTrials) = NaN; % What participant entered
-data.binaryAccuracy(1, exp.nTrials) = NaN; % Correct (1) or incorrect (0)
 data.continuousAccuracy(1, exp.nTrials) = NaN; % 100% = perfect, 0% = maximally wrong
 data.reactionTime(1, exp.nTrials) = NaN; % Time from stimulus end to response submission
 data.trialDuration(1, exp.nTrials) = NaN; % Total trial duration
@@ -752,12 +751,6 @@ for trl = 1:exp.nTrials
     correctSum = data.correctSum(trl);
     participantSum = data.participantSum(trl);
     
-    if ~isnan(participantSum) && participantSum == correctSum
-        data.binaryAccuracy(trl) = 1; % Correct
-    else
-        data.binaryAccuracy(trl) = 0; % Incorrect
-    end
-    
     % Continuous accuracy (100% = perfect, 0% = maximally wrong)
     % Computed as: 100 - percentage deviation from correct sum
     if ~isnan(participantSum) && correctSum ~= 0
@@ -788,7 +781,7 @@ for trl = 1:exp.nTrials
         Screen('FillRect', ptbWindow, backgroundColorGray);
         Screen('TextSize', ptbWindow, 20);
         
-        if data.binaryAccuracy(trl) == 1
+        if ~isnan(participantSum) && participantSum == correctSum
             feedbackText = 'Correct!';
             feedbackColor = [0 150 0]; % Green
         else
@@ -814,23 +807,18 @@ for trl = 1:exp.nTrials
     end
     
     %% Trial Info CW output
-    overall_accuracy = round((nansum(data.binaryAccuracy(1:trl))/trl)*100);
-    crossInfo = '';
+    monkeyInfo = '';
     if data.crossPresent(trl) == 1
-        crossInfo = ' | Cross: YES';
+        monkeyInfo = ' | Monkey: YES';
     else
-        crossInfo = ' | Cross: NO';
+        monkeyInfo = ' | Monkey: NO';
     end
     
-    nBlackDigits = sum(data.digitColors{trl});
     disp(['Trial ' num2str(trl) '/' num2str(exp.nTrials) ...
-          ' | Black Digits: ' num2str(nBlackDigits) ...
-          crossInfo ...
+          monkeyInfo ...
           ' | Correct Sum: ' num2str(correctSum) ...
           ' | Participant Sum: ' num2str(participantSum) ...
-          ' | Binary Acc: ' num2str(data.binaryAccuracy(trl)) ...
-          ' | Cont Acc: ' num2str(round(data.continuousAccuracy(trl), 2)) '%' ...
-          ' | Overall Acc: ' num2str(overall_accuracy) '%']);
+          ' | Acc: ' num2str(round(data.continuousAccuracy(trl), 2)) '%']);
 end
 
 %% End task and save data
