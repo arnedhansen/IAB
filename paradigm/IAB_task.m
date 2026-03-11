@@ -217,7 +217,7 @@ margin = 50; % pixels
 moveBounds = [margin, margin, screen.resolutionX - margin, screen.resolutionY - margin];
 
 %% Distractor parameters (grey monkey image)
-distractorSize_dva = 0.75; % Size of distractor in degrees of visual angle (half the digit size)
+distractorSize_dva = 0.5; % Size of distractor in degrees of visual angle
 distractorSize_pix = round(distractorSize_dva * screen.ppd);
 
 % Distractor movement parameters (moves randomly like digits)
