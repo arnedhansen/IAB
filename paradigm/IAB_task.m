@@ -67,10 +67,10 @@ end
 
 %% Screenshot and Video Options
 % Enable (= 1) or disable (= 0) screenshots of key frames
-enableScreenshots = 1; % Screenshots of: fixation, stimulus start, cross appear, input screen
+enableScreenshots = 0; % Screenshots of: fixation, stimulus start, cross appear, input screen
 
 % Enable (= 1) or disable (= 0) video recording per trial
-enableVideo = 1; % Records full trial (fixation + stimulus + input)
+enableVideo = 0; % Records full trial (fixation + stimulus + input)
 
 %% Set up text parameters
 % Define startExperimentText based on group
@@ -813,12 +813,20 @@ for trl = 1:exp.nTrials
     else
         monkeyInfo = ' | Monkey: NO';
     end
+    pastAccuracies = data.continuousAccuracy(1:trl);
+    pastAccuracies = pastAccuracies(~isnan(pastAccuracies));
+    if isempty(pastAccuracies)
+        overallAcc = NaN;
+    else
+        overallAcc = mean(pastAccuracies);
+    end
     
     disp(['Trial ' num2str(trl) '/' num2str(exp.nTrials) ...
           monkeyInfo ...
           ' | Correct Sum: ' num2str(correctSum) ...
           ' | Participant Sum: ' num2str(participantSum) ...
-          ' | Acc: ' num2str(round(data.continuousAccuracy(trl), 2)) '%']);
+          ' | Acc: ' num2str(round(data.continuousAccuracy(trl), 2)) '%' ...
+          ' | Overall Acc: ' num2str(round(overallAcc, 2)) '%']);
 end
 
 %% End task and save data
@@ -862,6 +870,8 @@ if TRAINING == 0
     noKeyCode = KbName('N');
     enterKeyCode = KbName('Return');
     backspaceKeyCode = KbName('BackSpace');
+    questionFontSize = 21;
+    questionWrapAt = 48;
     
     for q = 1:length(questions)
         questionText = questions{q};
@@ -878,21 +888,21 @@ if TRAINING == 0
                 Screen('FillRect', ptbWindow, backgroundColorGray);
                 
                 % Display question
-                Screen('TextSize', ptbWindow, 25);
-                DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 100, black);
+                Screen('TextSize', ptbWindow, questionFontSize);
+                DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 180, black, questionWrapAt);
                 
                 % Display current input
                 Screen('TextSize', ptbWindow, 20);
                 if ~isempty(inputString)
-                    DrawFormattedText(ptbWindow, inputString, 'center', screen.centerY, black);
+                    DrawFormattedText(ptbWindow, inputString, 'center', screen.centerY + 20, black, questionWrapAt + 6);
                 else
-                    DrawFormattedText(ptbWindow, '_', 'center', screen.centerY, [150 150 150]);
+                    DrawFormattedText(ptbWindow, '_', 'center', screen.centerY + 20, [150 150 150]);
                 end
                 
                 % Display instructions
                 instructionText = 'Type your answer and press ENTER to confirm';
                 Screen('TextSize', ptbWindow, 18);
-                DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 100, black);
+                DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 180, black, questionWrapAt + 8);
                 
                 Screen('Flip', ptbWindow);
                 
@@ -953,13 +963,13 @@ if TRAINING == 0
                 Screen('FillRect', ptbWindow, backgroundColorGray);
                 
                 % Display question
-                Screen('TextSize', ptbWindow, 25);
-                DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 50, black);
+                Screen('TextSize', ptbWindow, questionFontSize);
+                DrawFormattedText(ptbWindow, questionText, 'center', screen.centerY - 120, black, questionWrapAt);
                 
                 % Display instructions
                 instructionText = 'Press Y for YES, N for NO';
                 Screen('TextSize', ptbWindow, 20);
-                DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 50, black);
+                DrawFormattedText(ptbWindow, instructionText, 'center', screen.centerY + 90, black, questionWrapAt + 8);
                 
                 Screen('Flip', ptbWindow);
                 
