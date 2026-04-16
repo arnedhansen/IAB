@@ -217,7 +217,7 @@ margin = 50; % pixels
 moveBounds = [margin, margin, screen.resolutionX - margin, screen.resolutionY - margin];
 
 %% Distractor parameters (grey monkey image)
-distractorSize_dva = 0.5; % Size of distractor in degrees of visual angle
+distractorSize_dva = 0.25; % 50% smaller than previous size
 distractorSize_pix = round(distractorSize_dva * screen.ppd);
 
 % Distractor movement parameters (moves randomly like digits)
@@ -244,8 +244,8 @@ else
 end
 monkeyImage = imresize(monkeyImage, [newHeight, newWidth]);
 
-% Darken the monkey image (scale RGB values down)
-monkeyImage = uint8(double(monkeyImage) * 0.6); % 60% brightness
+% Darken the monkey image strongly so it blends with gray background
+monkeyImage = uint8(double(monkeyImage) * 0.3); % 30% brightness
 
 % Handle transparency: combine RGB with alpha channel into RGBA
 if ~isempty(alpha)
