@@ -2,13 +2,12 @@
 % Parses .asc files, segments into trials, cleans gaze data, aligns with
 % behavioral .mat data, and saves a preprocessed etData struct per subject.
 %
-% Input:
-%   Raw data from /Volumes/g_psyplafor_methlab_data$/OCC/IAB/[subjectID]/
+% Input (same tree as output; one folder per subject):
+%   /Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/[subjectID]/
 %     - [subjectID]_IAB.asc  (Eyelink ASCII)
 %     - [subjectID]_IAB.mat  (behavioral data from paradigm)
 %
-% Output:
-%   Preprocessed data to /Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/[subjectID]/
+% Output (same folder):
 %     - etData_IAB.mat
 %
 % Pipeline:
@@ -22,9 +21,10 @@
 %% Setup
 clear; clc; close all;
 
-% Paths
-RAW_PATH  = '/Volumes/g_psyplafor_methlab_data$/OCC/IAB/';
-OUT_PATH  = '/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/';
+% Paths (raw .asc / paradigm .mat and preprocessed outputs share this root)
+DATA_ROOT = '/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/';
+RAW_PATH  = DATA_ROOT;
+OUT_PATH  = DATA_ROOT;
 FUNC_PATH = '/Users/Arne/Documents/GitHub/functions/';
 addpath(FUNC_PATH);
 

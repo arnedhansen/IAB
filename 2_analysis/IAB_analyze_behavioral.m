@@ -3,16 +3,23 @@
 % condition, summarizes perception questions.
 %
 % Input:
-%   /Volumes/g_psyplafor_methlab_data$/OCC/IAB/[subjectID]/[subjectID]_IAB.mat
+%   /Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/[subjectID]/[subjectID]_IAB.mat
 %
 % Output:
 %   /Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/behavioral_summary.mat
 
+%% Fix subj 208
+% S = load("/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/208/208_IAB.mat");
+% S.saves.subject.groupName = 'Expanded Attention';
+% S.saves.subject.group = 'B';
+% save("/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/208/208_IAB.mat", "-struct", "S");
+
 %% Setup
 clear; clc; close all;
 
-RAW_PATH  = '/Volumes/g_psyplafor_methlab_data$/OCC/IAB/';
-OUT_PATH  = '/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/';
+DATA_ROOT = '/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/';
+RAW_PATH  = DATA_ROOT;
+OUT_PATH  = DATA_ROOT;
 
 subjects = 201:220;
 

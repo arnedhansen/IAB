@@ -3,9 +3,9 @@
 % behavioral analysis.
 %
 % Plots:
-%   1. BCEA ellipse overlay (Group A vs B, pooled gaze)
+%   1. BCEA ellipse overlay (Group A vs B, pooled gaze; 2 SD and 3 SD)
 %   2. Boxplots: ET metrics by Group x Distractor
-%   3. Gaze heatmaps by group
+%   3. Gaze heatmaps by group (baseline change, distractor-centered, group diff)
 %   4. Behavioral summary boxplots (accuracy, RT)
 %   5. Perception question boxplots
 %   6. Time on Target boxplot by group
@@ -23,7 +23,6 @@ clear; clc; close all;
 
 DATA_PATH = '/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/';
 FIG_PATH  = '/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/figures/';
-if ~exist(FIG_PATH, 'dir'); mkdir(FIG_PATH); end
 
 % Load data
 load(fullfile(DATA_PATH, 'features_all.mat'), 'allFeatures');
@@ -47,18 +46,20 @@ subjects = 201:220;
 %  ========================================================================
 fprintf('Plotting BCEA ellipses...\n');
 
-P95 = 0.95;
-k95 = -log(1 - P95);
+% MVN Mahalanobis ellipsoid at distance n: principal semi-axes n*sqrt(eigenvalue of Sigma).
+nSigmaList = [2, 3];
 theta = linspace(0, 2*pi, 200);
 
-figure; set(gcf, 'Position', [0 0 1512 982], 'Color', 'w'); hold on;
-legendHandles = gobjects(1, 2);
+nG = 2;
+mx = NaN(nG, 1);
+my = NaN(nG, 1);
+Vprin = cell(nG, 1);
+lamPrin = cell(nG, 1);
+validGroup = false(nG, 1);
 
 for g = 0:1
-    gCol = colors(g+1, :);
-
-    % Pool all gaze data for this group across all subjects and trials
-    all_x = []; all_y = [];
+    all_x = [];
+    all_y = [];
 
     for s = 1:length(subjects)
         subjID = num2str(subjects(s));
@@ -78,38 +79,56 @@ for g = 0:1
 
     if numel(all_x) < 10; continue; end
 
-    % Compute BCEA ellipse
-    mx = mean(all_x); my = mean(all_y);
-    sx = std(all_x);  sy = std(all_y);
+    mx(g+1) = mean(all_x);
+    my(g+1) = mean(all_y);
+    sx = std(all_x);
+    sy = std(all_y);
     rho = corr(double(all_x(:)), double(all_y(:)));
     cov_mat = [sx^2, rho*sx*sy; rho*sx*sy, sy^2];
     [V, D] = eig(cov_mat);
-
-    % Draw 95% ellipse
-    r = sqrt(2 * k95 * diag(D));
-    ell = V * [r(1)*cos(theta); r(2)*sin(theta)];
-    ex = ell(1,:) + mx; ey = ell(2,:) + my;
-
-    fill(ex, ey, gCol, 'FaceAlpha', 0.15, 'EdgeColor', gCol, 'LineWidth', 2.5);
-    legendHandles(g+1) = plot(ex, ey, '-', 'Color', gCol, 'LineWidth', 2.5);
+    Vprin{g+1} = V;
+    lamPrin{g+1} = diag(D);
+    validGroup(g+1) = true;
 end
 
-plot(centreX, centreY, '+', 'MarkerSize', 20, 'LineWidth', 2.5, 'Color', 'k');
-rectangle('Position', [0 0 screenW screenH], 'EdgeColor', [0.5 0.5 0.5], ...
-    'LineWidth', 1, 'LineStyle', '--');
-xlim([-20 screenW+20]); ylim([-20 screenH+20]);
-set(gca, 'YDir', 'normal', 'FontSize', fontSize);
-xlabel('Screen X [px]', 'FontSize', fontSize);
-ylabel('Screen Y [px]', 'FontSize', fontSize);
-title('BCEA (95%) by Group', 'FontSize', fontSize+2);
-validLegend = isgraphics(legendHandles);
-if any(validLegend)
-    legend(legendHandles(validLegend), groupLabels(validLegend), ...
-        'FontSize', fontSize-2, 'Location', 'northeast');
+for k = 1:numel(nSigmaList)
+    nS = nSigmaList(k);
+    figTag = sprintf('BCEA%dSD', nS);
+
+    figure; set(gcf, 'Position', [0 0 1512 982], 'Color', 'w'); hold on;
+    legendHandles = gobjects(1, nG);
+
+    for g = 0:1
+        if ~validGroup(g+1); continue; end
+        gCol = colors(g+1, :);
+        V = Vprin{g+1};
+        r = nS * sqrt(lamPrin{g+1});
+        ell = V * [r(1)*cos(theta); r(2)*sin(theta)];
+        ex = ell(1, :) + mx(g+1);
+        ey = ell(2, :) + my(g+1);
+
+        fill(ex, ey, gCol, 'FaceAlpha', 0.15, 'EdgeColor', gCol, 'LineWidth', 2.5);
+        legendHandles(g+1) = plot(ex, ey, '-', 'Color', gCol, 'LineWidth', 2.5);
+    end
+
+    plot(centreX, centreY, '+', 'MarkerSize', 20, 'LineWidth', 2.5, 'Color', 'k');
+    rectangle('Position', [0 0 screenW screenH], 'EdgeColor', [0.5 0.5 0.5], ...
+        'LineWidth', 1, 'LineStyle', '--');
+    xlim([-20 screenW+20]); ylim([-20 screenH+20]);
+    set(gca, 'YDir', 'normal', 'FontSize', fontSize);
+    xlabel('Screen X [px]', 'FontSize', fontSize);
+    ylabel('Screen Y [px]', 'FontSize', fontSize);
+    title(sprintf('BCEA (%g SD) by Group', nS), 'FontSize', fontSize+2);
+    validLegend = isgraphics(legendHandles);
+    if any(validLegend)
+        legend(legendHandles(validLegend), groupLabels(validLegend), ...
+            'FontSize', fontSize-2, 'Location', 'northeast');
+    end
+    axis equal; xlim([-20 screenW+20]); ylim([-20 screenH+20]);
+    hold off;
+    saveas(gcf, fullfile(FIG_PATH, ['IAB_' figTag '.png']));
+    close;
 end
-axis equal; xlim([-20 screenW+20]); ylim([-20 screenH+20]);
-hold off;
-saveas(gcf, fullfile(FIG_PATH, 'IAB_BCEA_ellipse.png'));
 
 %% ========================================================================
 %  2. BOXPLOTS: ET METRICS BY GROUP x DISTRACTOR
@@ -351,6 +370,76 @@ end
 sgtitle('Gaze Heatmaps: Distractor-Centered', 'FontSize', fontSize+2);
 saveas(gcf, fullfile(FIG_PATH, 'IAB_gaze_heatmaps_distractor_centered.png'));
 
+% 3c. Distractor-centered density difference between groups (Expanded - Focused)
+rel_x_by_g = cell(1, 2);
+rel_y_by_g = cell(1, 2);
+for g = 0:1
+    rel_x_by_g{g+1} = [];
+    rel_y_by_g{g+1} = [];
+
+    for s = 1:length(subjects)
+        subjID = num2str(subjects(s));
+        etFile = fullfile(DATA_PATH, subjID, 'etData_IAB.mat');
+        if ~exist(etFile, 'file'); continue; end
+        load(etFile, 'etData');
+        if strcmp(etData.group, 'B') ~= g; continue; end
+
+        for trl = 1:length(etData.gazeX)
+            if etData.crossPresent(trl) ~= 1 || isempty(etData.distractorPos{trl})
+                continue;
+            end
+
+            gx = etData.gazeX{trl};
+            gy = etData.gazeY{trl};
+            dPos = etData.distractorPos{trl};
+            nSamples = numel(gx);
+            nDistSamples = size(dPos, 1);
+
+            if nDistSamples == 0
+                continue;
+            elseif nDistSamples ~= nSamples
+                dTimeOrig = linspace(0, 7, nDistSamples);
+                dTimeNew  = linspace(0, 7, nSamples);
+                dPos = [interp1(dTimeOrig, dPos(:,1), dTimeNew, 'nearest', 'extrap'); ...
+                        interp1(dTimeOrig, dPos(:,2), dTimeNew, 'nearest', 'extrap')]';
+            end
+
+            dX = dPos(1:nSamples, 1)';
+            dY = dPos(1:nSamples, 2)';
+            valid = isfinite(gx) & isfinite(gy) & isfinite(dX) & isfinite(dY);
+
+            if ~any(valid); continue; end
+            rel_x_by_g{g+1} = [rel_x_by_g{g+1}, gx(valid) - dX(valid)];
+            rel_y_by_g{g+1} = [rel_y_by_g{g+1}, gy(valid) - dY(valid)];
+        end
+    end
+end
+
+Hrel_foc = buildHeatmap(rel_x_by_g{1}, rel_y_by_g{1}, xRelEdges, yRelEdges, kernel);
+Hrel_exp = buildHeatmap(rel_x_by_g{2}, rel_y_by_g{2}, xRelEdges, yRelEdges, kernel);
+Hrel_diff = Hrel_exp - Hrel_foc;
+
+figure; set(gcf, 'Position', [0 0 1512 982], 'Color', 'w');
+imagesc(xRelEdges(1:end-1), yRelEdges(1:end-1), Hrel_diff');
+set(gca, 'YDir', 'normal');
+colormap(gca, brMap);
+cLim = max(abs(Hrel_diff(:)));
+if ~isfinite(cLim) || cLim == 0; cLim = 1; end
+caxis([-cLim, cLim]);
+cb = colorbar;
+cb.Label.String = '\Delta gaze density (Expanded - Focused)';
+hold on;
+plot(0, 0, '+k', 'MarkerSize', 18, 'LineWidth', 2.5);
+hold off;
+xlabel('\DeltaX from distractor [px]', 'FontSize', fontSize);
+ylabel('\DeltaY from distractor [px]', 'FontSize', fontSize);
+title('Distractor-centered gaze: group difference', 'FontSize', fontSize+1);
+set(gca, 'FontSize', fontSize-1);
+axis equal; xlim([-xRelLim xRelLim]); ylim([-yRelLim yRelLim]);
+sgtitle('Gaze Heatmap: Distractor-Centered (Between-Group Contrast)', 'FontSize', fontSize+2);
+saveas(gcf, fullfile(FIG_PATH, 'IAB_gaze_heatmap_distractor_centered_group_diff.png'));
+close;
+
 %% ========================================================================
 %  4. BEHAVIORAL SUMMARY (Accuracy & RT)
 %  ========================================================================
@@ -413,53 +502,7 @@ box off; hold off;
 saveas(gcf, fullfile(FIG_PATH, 'IAB_behavioral_summary.png'));
 
 %% ========================================================================
-%  5. PERCEPTION QUESTIONS
-%  ========================================================================
-fprintf('Plotting perception questions...\n');
-
-perc = behavioral_summary.perception;
-if ~isempty(perc)
-    figure; set(gcf, 'Position', [0 0 1512 982], 'Color', 'w');
-
-    qLabels = {'Q1: Unusual', 'Q2: Besides nums', 'Q3: Non-num object', 'Q5: Saw monkey'};
-    qFields = {'Q1_unusual', 'Q2_besides', 'Q3_object', 'Q5_monkey'};
-
-    for q = 1:length(qFields)
-        subplot(2,2,q); hold on;
-        valsA = [perc([perc.group] == 0).(qFields{q})];
-        valsB = [perc([perc.group] == 1).(qFields{q})];
-        valsA = valsA(~isnan(valsA));
-        valsB = valsB(~isnan(valsB));
-
-        if ~isempty(valsA)
-            boxplot(valsA*100, ones(size(valsA)), 'Positions', 1, 'Symbol', '', 'Widths', 0.5, 'Colors', 'k');
-            scatter(1 + 0.12*(rand(size(valsA))-0.5), valsA*100, 80, colA, 'filled', 'MarkerFaceAlpha', 0.65);
-        end
-        if ~isempty(valsB)
-            boxplot(valsB*100, 2*ones(size(valsB)), 'Positions', 2, 'Symbol', '', 'Widths', 0.5, 'Colors', 'k');
-            scatter(2 + 0.12*(rand(size(valsB))-0.5), valsB*100, 80, colB, 'filled', 'MarkerFaceAlpha', 0.65);
-        end
-
-        pQ = runBinaryGroupTest(valsA, valsB);
-        allQ = [valsA(:); valsB(:)] * 100;
-        if isempty(allQ); allQ = [0; 1]; end
-        yMaxQ = max(allQ); yMinQ = min(allQ); yRangeQ = max(eps, yMaxQ - yMinQ);
-        sigYQ = yMaxQ + 0.12*yRangeQ;
-        addSigBracket(1, 2, sigYQ, pQ, 0.05*yRangeQ);
-        ylim([max(0, yMinQ - 0.1*yRangeQ), min(105, sigYQ + 0.12*yRangeQ)]);
-        set(gca, 'XTick', [1 2], 'XTickLabel', {'Focused', 'Expanded'}, 'FontSize', fontSize-4);
-        ylabel('% Yes', 'FontSize', fontSize-4);
-        title(qLabels{q}, 'FontSize', fontSize-2);
-        box off; hold off;
-    end
-
-    sgtitle('Perception Questions by Group', 'FontSize', fontSize+2);
-
-    saveas(gcf, fullfile(FIG_PATH, 'IAB_perception_questions.png'));
-end
-
-%% ========================================================================
-%  6. TIME ON TARGET BY GROUP
+%  5. TIME ON TARGET BY GROUP
 %  ========================================================================
 fprintf('Plotting time on target...\n');
 
