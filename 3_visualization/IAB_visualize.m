@@ -7,8 +7,7 @@
 %   2. Boxplots: ET metrics by Group x Distractor
 %   3. Gaze heatmaps by group (baseline change, distractor-centered, group diff)
 %   4. Behavioral summary boxplots (accuracy, RT)
-%   5. Perception question boxplots
-%   6. Time on Target boxplot by group
+%   5. Time on Target boxplot by group
 %
 % Input:
 %   /Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/features_all.mat

@@ -4,7 +4,7 @@
 %
 % Features extracted:
 %   - BCEA (95%): Bivariate Contour Ellipse Area
-%   - Time on Target: proportion of gaze within 1 dva of monkey distractor
+%   - Time on Target: proportion of gaze within tot_radius_dva of monkey distractor
 %   - Gaze Deviation: mean Euclidean distance from screen center
 %   - Gaze Dispersion: SD of X and Y coordinates
 %   - Fixation count and mean duration (from Eyelink events)
@@ -30,17 +30,18 @@ screenH = 600;
 centreX = 400;
 centreY = 300;
 sRate   = 500;
+stim_duration = 7.0; % seconds; must match IAB_preprocessing.m
 
 % BCEA parameters (95% confidence)
 P95 = 0.95;
 k95 = -log(1 - P95); % = 2.9957
 
-% Time-on-target parameters
-% 1 dva at 80 cm viewing distance, screen 48 cm wide, 800 px
+% Time-on-target parameters (gaze counted as "on target" if within this radius of
+% the moving distractor centroid). 1 dva is strict for a peripheral moving target
+% while digits are tracked; 2 dva is a common relaxed default (tune as needed).
 ppd = screenW / (2 * atand(48 / (2 * 80)) * 2); % pixels per degree
-tot_radius_dva = 1.0; % degrees of visual angle
+tot_radius_dva = 2; % degrees of visual angle
 tot_radius_px  = tot_radius_dva * ppd;
-fprintf('Time-on-target radius: %.1f dva = %.1f px\n', tot_radius_dva, tot_radius_px);
 
 % Subject IDs
 subjects = 201:220;
@@ -124,29 +125,38 @@ for s = 1:length(subjects)
 
         %% Time on Target (distractor)
         if etData.crossPresent(trl) == 1 && ~isempty(etData.distractorPos{trl})
-            dPos = etData.distractorPos{trl}; % N×2 [x, y] at 500 Hz
-            tVec = etData.time{trl};
-            nSamples = length(gx);
-
-            % The distractor position array may differ in length from gaze.
-            % Resample distractor positions to match gaze sample count.
-            nDistSamples = size(dPos, 1);
-            if nDistSamples > 0 && nDistSamples ~= nSamples
-                % Create time vectors for interpolation
-                dTimeOrig = linspace(0, 7, nDistSamples);
-                dTimeNew  = linspace(0, 7, nSamples);
-                dPosResampled = [interp1(dTimeOrig, dPos(:,1), dTimeNew, 'nearest', 'extrap'); ...
-                                 interp1(dTimeOrig, dPos(:,2), dTimeNew, 'nearest', 'extrap')]';
-            else
-                dPosResampled = dPos;
+            dPos = etData.distractorPos{trl}; % N×2 [x, y]
+            nSamples = numel(gx);
+            tGaze = etData.time{trl}(:);
+            if numel(tGaze) ~= nSamples
+                tGaze = linspace(0, stim_duration, nSamples)';
             end
 
-            % Compute distance from gaze to distractor at each sample
-            if size(dPosResampled, 1) >= nSamples
-                distToTarget = sqrt((gx - dPosResampled(1:nSamples, 1)').^2 + ...
-                                    (gy - dPosResampled(1:nSamples, 2)').^2);
-                onTarget = distToTarget <= tot_radius_px & valid;
-                trialFeatures.timeOnTarget(trl) = sum(onTarget) / sum(valid) * 100; % percentage
+            nDistSamples = size(dPos, 1);
+            if nDistSamples > 0
+                % Align distractor to gaze timeline using recorded PTB timestamps when
+                % available (first sample is at stimulus onset in IAB_task.m).
+                if isfield(etData, 'distractorTime') && ~isempty(etData.distractorTime{trl})
+                    dTime = etData.distractorTime{trl}(:);
+                    if numel(dTime) ~= nDistSamples
+                        dTrel = linspace(0, stim_duration, nDistSamples);
+                    else
+                        dTrel = dTime - dTime(1);
+                    end
+                else
+                    dTrel = linspace(0, stim_duration, nDistSamples);
+                end
+
+                xD = interp1(dTrel, dPos(:, 1), tGaze, 'linear', 'extrap');
+                yD = interp1(dTrel, dPos(:, 2), tGaze, 'linear', 'extrap');
+                gxRow = gx(:)';
+                gyRow = gy(:)';
+                xD = xD(:)';
+                yD = yD(:)';
+                distToTarget = hypot(gxRow - xD, gyRow - yD);
+                validRow = isfinite(gxRow) & isfinite(gyRow);
+                onTarget = distToTarget <= tot_radius_px & validRow;
+                trialFeatures.timeOnTarget(trl) = sum(onTarget) / sum(validRow) * 100; % percentage
             end
         end
 
