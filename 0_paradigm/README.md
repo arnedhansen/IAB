@@ -109,50 +109,6 @@ For each trial, the following metrics are saved:
 **Perception data** (after main task):
 - `perceptionData.Q1-Q4`: Responses to perception questions (1=yes, 0=no)
 
-## Screenshot and Video Options
-
-The script includes options for capturing screenshots and videos:
-
-- **Screenshots** (`enableScreenshots = 1`): Captures key frames:
-  - Fixation cross
-  - Stimulus start (number cloud)
-  - Cross appear (if present)
-  - Input screen
-  - Saved to: `[DATA_PATH]/[SubjectID]/screenshots/`
-
-- **Video Recording** (`enableVideo = 1`): Records full trial:
-  - Captures fixation + stimulus + input phases
-  - Frame rate: 30 fps
-  - Quality: 90%
-  - Format: Motion JPEG AVI
-  - Saved to: `[DATA_PATH]/[SubjectID]/videos/`
-
-## Requirements
-
-- **MATLAB** (tested with R2023b)
-- **PsychToolbox** (version 3.0.15 or compatible)
-- **EEG System**: ANT Neuro (for trigger sending)
-- **Eye Tracker**: Tobii Pro Fusion (optional, for eye tracking)
-- **ppdev-mex-master**: For parallel port communication (EEG triggers)
-
-## Setup
-
-1. Update paths in `master.m`:
-   - `PPDEV_PATH`: Path to ppdev-mex-master
-   - `DATA_PATH`: Where to save data files
-   - `FUNS_PATH`: Path to this IAB folder
-
-2. Ensure screen settings are configured in `screenSettings.m`:
-   - Screen resolution: 800x600
-   - Refresh rate: 100 Hz (Linux)
-
-3. Run the experiment:
-   ```matlab
-   master
-   ```
-
-4. Enter subject ID when prompted (should be 201-220)
-
 ## File Structure
 
 - `master.m` - Main script that runs practice and main task, assigns groups
@@ -164,7 +120,6 @@ The script includes options for capturing screenshots and videos:
 - `dialogID.m` - Subject ID collection dialog
 - `closeEEGandET.m` - Cleanup routines
 - `EL_*.m` - Eye tracker helper functions
-- `screenshot.m` - Screenshot utility
 
 ## Data Output
 
@@ -175,26 +130,3 @@ Data is saved in `.mat` files:
 Each file contains:
 - `saves`: Structure with all trial data, experiment parameters, screen settings, timing information, group assignment, and perception responses
 - `trigger`: Structure with all trigger codes for EEG/ET synchronization
-
-**Screenshots** (if enabled):
-- `trialXXX_fixation.png`
-- `trialXXX_stimulus_start.png`
-- `trialXXX_cross_appear.png` (only if cross present)
-- `trialXXX_input.png`
-
-**Videos** (if enabled):
-- `trialXXX.avi` - Full trial recording
-
-## Based On
-
-This paradigm is adapted from:
-- Most, S. B., Simons, D. J., Scholl, B. J., & Chabris, C. F. (2000). Sustained Inattentional Blindness: The Role of Location in the Detection of Unexpected Dynamic Events. *PSYCHE*, 6(14).
-
-## Notes
-
-- The task uses time-based movement calculations for smooth digit motion regardless of frame rate
-- All events are synchronized with EEG/ET via triggers
-- The cross is designed to be subtle (grayish) and offset to maximize inattentional blindness effects
-- Group assignment is deterministic based on subject ID to ensure balanced groups (10 per group)
-- Participants in Group B are warned about potential visual changes, while Group A receives focused instructions only
-- Perception questions are asked only at the end of the experiment, not after each trial
