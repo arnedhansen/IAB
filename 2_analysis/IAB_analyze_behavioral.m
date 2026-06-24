@@ -8,12 +8,6 @@
 % Output:
 %   /Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/behavioral_summary.mat
 
-%% Fix subj 208
-% S = load("/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/208/208_IAB.mat");
-% S.saves.subject.groupName = 'Expanded Attention';
-% S.saves.subject.group = 'B';
-% save("/Volumes/g_psyplafor_methlab$/Students/Arne/IAB/data/208/208_IAB.mat", "-struct", "S");
-
 %% Setup
 clear; clc; close all;
 

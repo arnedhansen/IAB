@@ -14,6 +14,8 @@
 %   Figures in [FIG_PATH] with filename suffix _trials before .png (figure width
 %   figW = 1512/2 px). Behavioral accuracy and RT are each saved as their own
 %   figure; the same for group x distractor splits (four trial pools per panel).
+%   [DATA_PATH]/IAB_features.csv        (trial-level data used for stats)
+%   [DATA_PATH]/IAB_stats_results.csv   (all t-tests shown on figures)
 %
 % Prerequisite: run IAB_feature_extraction.m and IAB_analyze_behavioral.m.
 %
@@ -37,6 +39,9 @@ colA = [0.2 0.4 0.8];
 colB = [0.8 0.3 0.2];
 fontSize = 18;
 figW = 1512 / 2;
+lblGroupA = 'Fokussiert';
+lblGroupB = 'Erweitert';
+lblGroupsXY = {lblGroupA, lblGroupB};
 
 %% Stack trial-level ET features from all subjects
 fprintf('Loading trial-level features...\n');
@@ -52,6 +57,8 @@ numericFields = {'gazeDeviation', 'gazeStdX', 'gazeStdY', 'fixationCount', 'fixa
 fprintf('Masking trial outliers beyond %g SD (per variable, set to NaN)...\n', outlierSd);
 trialStack = applySdOutlierMask(trialStack, numericFields, outlierSd);
 
+statsTable = table();
+
 %% Boxplots settings (x at 1 and 2: two separate boxplot calls avoid grouped
 % boxplot + custom Positions misalignment in some MATLAB versions)
 catX = [1 2];
@@ -64,15 +71,15 @@ jitter = 0.35;
 fprintf('Plotting trial-level ET metric boxplots...\n');
 
 dvSpecs = {
-    'gazeDeviation',   'Gaze Deviation [px]',           'gazeDeviation'
-    'gazeStdX',        'Gaze Std X [px]',               'gazeStdX'
-    'gazeStdY',        'Gaze Std Y [px]',               'gazeStdY'
-    'fixationCount',   'Fixation Count',                'fixationCount'
-    'fixationDur',     'Fixation Duration [ms]',        'fixationDurMean'
-    'saccadeCount',    'Saccade Count',                 'saccadeCount'
-    'saccadeAmp',      'Saccade Amplitude [deg]',       'saccadeAmpMean'
-    'Scan Path Length',     'Scan Path Length [px]',         'scanPathLength'
-    'pupilSize',       'Pupil Size [a.u.]',             'pupilSize'
+    'gazeDeviation',   'Blickabweichung [px]',          'gazeDeviation'
+    'gazeStdX',        'Blick-Std. X [px]',             'gazeStdX'
+    'gazeStdY',        'Blick-Std. Y [px]',             'gazeStdY'
+    'fixationCount',   'Fixationsanzahl',               'fixationCount'
+    'fixationDur',     'Fixationsdauer [ms]',           'fixationDurMean'
+    'saccadeCount',    'Sakkadenanzahl',                'saccadeCount'
+    'saccadeAmp',      'Sakkadenamplitude [°]',         'saccadeAmpMean'
+    'Scan Path Length',     'Scanstrecke [px]',              'scanPathLength'
+    'pupilSize',       'Pupillengrösse [a.u.]',        'pupilSize'
     };
 
 for d = 1:size(dvSpecs, 1)
@@ -113,6 +120,7 @@ for d = 1:size(dvSpecs, 1)
     styleCurrentBoxplot([colA; colB]);
 
     pGrp = runIndependentTtest(ya, yb);
+    statsTable = appendTtestRow(statsTable, fld, 'ET_group', 'Focused_vs_Expanded', ya, yb);
 
     yMax = max(valsAll(valid));
     yMin = min(valsAll(valid));
@@ -124,13 +132,13 @@ for d = 1:size(dvSpecs, 1)
     ylim([yMin - 0.12*yRange, sigY + capH + 0.10*yRange]);
     xlim([0.5 2.5]);
 
-    set(gca, 'XTick', catX, 'XTickLabel', {'Focused', 'Expanded'}, ...
+    set(gca, 'XTick', catX, 'XTickLabel', lblGroupsXY, ...
         'FontSize', fontSize - 2);
     ylabel(yLabelS, 'FontSize', fontSize);
     title(titleFromYLabel(yLabelS), 'FontSize', fontSize);
     hFocused = patch(nan, nan, colA, 'FaceAlpha', 0.25, 'EdgeColor', colA, 'LineWidth', 1.5);
     hExpanded = patch(nan, nan, colB, 'FaceAlpha', 0.25, 'EdgeColor', colB, 'LineWidth', 1.5);
-    legend([hFocused, hExpanded], {'Focused', 'Expanded'}, 'FontSize', fontSize - 4, 'Location', 'northeast');
+    legend([hFocused, hExpanded], lblGroupsXY, 'FontSize', fontSize - 4, 'Location', 'northeast');
     xlim([0.5 2.5]);
     box off; hold off;
 
@@ -141,7 +149,8 @@ end
 %% ========================================================================
 %  2. BEHAVIORAL SUMMARY (trial-level accuracy and RT by group)
 %  ========================================================================
-    behavFile = fullfile(DATA_PATH, 'behavioral_summary.mat');
+bd = [];
+behavFile = fullfile(DATA_PATH, 'behavioral_summary.mat');
 if ~exist(behavFile, 'file')
     warning('behavioral_summary.mat not found, skipping behavioral trial plots.');
 else
@@ -184,6 +193,8 @@ else
         scatter(2 + jitter*(rand(numel(accB), 1) - 0.5), accB, dotSize, colB, 'filled', 'MarkerFaceAlpha', 0.45);
         styleCurrentBoxplot([colA; colB]);
         pAcc = runIndependentTtest(accA, accB);
+        statsTable = appendTtestRow(statsTable, 'contAccuracy', 'behavioral_group', ...
+            'Focused_vs_Expanded', accA, accB);
         yValsAcc = [accA(:); accB(:)];
         yMaxAcc = max(yValsAcc);
         yMinAcc = min(yValsAcc);
@@ -196,13 +207,13 @@ else
         xlim([0.5 2.5]);
         axBeh1 = gca;
     end
-    set(gca, 'XTick', 1:2, 'XTickLabel', {'Focused', 'Expanded'}, 'FontSize', fontSize - 2);
-    ylabelAcc = 'Accuracy (%)';
+    set(gca, 'XTick', 1:2, 'XTickLabel', lblGroupsXY, 'FontSize', fontSize - 2);
+    ylabelAcc = 'Genauigkeit (%)';
     ylabel(ylabelAcc, 'FontSize', fontSize);
-    title('Accuracy', 'FontSize', fontSize);
+    title('Genauigkeit', 'FontSize', fontSize);
     hFocused = patch(nan, nan, colA, 'FaceAlpha', 0.25, 'EdgeColor', colA, 'LineWidth', 1.5);
     hExpanded = patch(nan, nan, colB, 'FaceAlpha', 0.25, 'EdgeColor', colB, 'LineWidth', 1.5);
-    legend([hFocused, hExpanded], {'Focused', 'Expanded'}, 'FontSize', fontSize - 4, 'Location', 'southwest');
+    legend([hFocused, hExpanded], lblGroupsXY, 'FontSize', fontSize - 4, 'Location', 'southwest');
     box off; hold off;
     if isgraphics(axBeh1)
         xlim(axBeh1, [0.5 2.5]);
@@ -226,6 +237,8 @@ else
         scatter(2 + jitter*(rand(numel(rtB), 1) - 0.5), rtB, dotSize, colB, 'filled', 'MarkerFaceAlpha', 0.45);
         styleCurrentBoxplot([colA; colB]);
         pRT = runIndependentTtest(rtA, rtB);
+        statsTable = appendTtestRow(statsTable, 'reactionTime', 'behavioral_group', ...
+            'Focused_vs_Expanded', rtA, rtB);
         yValsRT = [rtA(:); rtB(:)];
         yMaxRT = max(yValsRT);
         yMinRT = min(yValsRT);
@@ -238,13 +251,13 @@ else
         xlim([0.5 2.5]);
         axBeh2 = gca;
     end
-    set(gca, 'XTick', 1:2, 'XTickLabel', {'Focused', 'Expanded'}, 'FontSize', fontSize - 2);
-    ylabelRT = 'Reaction Time [s]';
+    set(gca, 'XTick', 1:2, 'XTickLabel', lblGroupsXY, 'FontSize', fontSize - 2);
+    ylabelRT = 'Reaktionszeit [s]';
     ylabel(ylabelRT, 'FontSize', fontSize);
     title(titleFromYLabel(ylabelRT), 'FontSize', fontSize);
     hFocused = patch(nan, nan, colA, 'FaceAlpha', 0.25, 'EdgeColor', colA, 'LineWidth', 1.5);
     hExpanded = patch(nan, nan, colB, 'FaceAlpha', 0.25, 'EdgeColor', colB, 'LineWidth', 1.5);
-    legend([hFocused, hExpanded], {'Focused', 'Expanded'}, 'FontSize', fontSize - 4, 'Location', 'southwest');
+    legend([hFocused, hExpanded], lblGroupsXY, 'FontSize', fontSize - 4, 'Location', 'southwest');
     box off; hold off;
     if isgraphics(axBeh2)
         xlim(axBeh2, [0.5 2.5]);
@@ -277,8 +290,10 @@ else
 
     figure; set(gcf, 'Position', [0 0 figW 982], 'Color', 'w');
     axGd1 = gca;
-    plotFourGroupTrialBoxplot(axGd1, accFA, accFP, accEA, accEP, boxPos4, ...
-        jitter4, dotSize, colA, colB, fontSize, 'Accuracy (%)', 'Accuracy', true);
+    [axGd1, TaccGd] = plotFourGroupTrialBoxplot(axGd1, accFA, accFP, accEA, accEP, boxPos4, ...
+        jitter4, dotSize, colA, colB, fontSize, 'Genauigkeit (%)', 'Genauigkeit', true, ...
+        'contAccuracy', 'behavioral_group_x_distractor', lblGroupsXY);
+    statsTable = [statsTable; TaccGd];
     if isgraphics(axGd1)
         bumpAxesTitleMargin(axGd1);
     end
@@ -287,9 +302,11 @@ else
     fprintf('Plotting trial-level reaction time by group x distractor...\n');
     figure; set(gcf, 'Position', [0 0 figW 982], 'Color', 'w');
     axGd2 = gca;
-    plotFourGroupTrialBoxplot(axGd2, rtFA, rtFP, rtEA, rtEP, boxPos4, ...
-        jitter4, dotSize, colA, colB, fontSize, 'Reaction Time [s]', ...
-        titleFromYLabel('Reaction Time [s]'), true);
+    [axGd2, TrtGd] = plotFourGroupTrialBoxplot(axGd2, rtFA, rtFP, rtEA, rtEP, boxPos4, ...
+        jitter4, dotSize, colA, colB, fontSize, 'Reaktionszeit [s]', ...
+        titleFromYLabel('Reaktionszeit [s]'), true, ...
+        'reactionTime', 'behavioral_group_x_distractor', lblGroupsXY);
+    statsTable = [statsTable; TrtGd];
     if isgraphics(axGd2)
         bumpAxesTitleMargin(axGd2);
     end
@@ -336,6 +353,8 @@ scatter(1 + jitter*(rand(numel(totA), 1) - 0.5), totA, dotSize, colA, 'filled', 
 scatter(2 + jitter*(rand(numel(totB), 1) - 0.5), totB, dotSize, colB, 'filled', 'MarkerFaceAlpha', 0.45);
 styleCurrentBoxplot([colA; colB]);
 pTOT = runIndependentTtest(totA, totB);
+statsTable = appendTtestRow(statsTable, 'timeOnTarget', 'time_on_target', ...
+    'Focused_vs_Expanded_monkeyPresent_ToTgt0', totA, totB);
 yAll = [totA(:); totB(:)];
 if isempty(yAll); yAll = [0; 1]; end
 yMax = max(yAll); yMin = min(yAll); yRange = max(eps, yMax - yMin);
@@ -344,18 +363,27 @@ addSigBracket(1, 2, sigYTOT, pTOT, 0.04*yRange);
 ylim([yMin - 0.12*yRange, sigYTOT + 0.10*yRange]);
 xlim([0.5 2.5]);
 %ylim([0 0.5])
-set(gca, 'XTick', 1:2, 'XTickLabel', {'Focused', 'Expanded'}, ...
+set(gca, 'XTick', 1:2, 'XTickLabel', lblGroupsXY, ...
     'FontSize', fontSize - 2);
-ylabelTOT = 'Time on Target [%]';
+ylabelTOT = 'Zeit auf Ziel [%]';
 ylabel(ylabelTOT, 'FontSize', fontSize);
 title(titleFromYLabel(ylabelTOT), 'FontSize', fontSize);
 hFocused = patch(nan, nan, colA, 'FaceAlpha', 0.25, 'EdgeColor', colA, 'LineWidth', 1.5);
 hExpanded = patch(nan, nan, colB, 'FaceAlpha', 0.25, 'EdgeColor', colB, 'LineWidth', 1.5);
-legend([hFocused, hExpanded], {'Focused', 'Expanded'}, 'FontSize', fontSize - 4, 'Location', 'northeast');
+legend([hFocused, hExpanded], lblGroupsXY, 'FontSize', fontSize - 4, 'Location', 'northeast');
 xlim([0.5 2.5]);
 box off; hold off;
 
 saveas(gcf, fullfile(FIG_PATH, 'IAB_time_on_target_trials.png'));
+
+featuresCsv = fullfile(DATA_PATH, 'IAB_features.csv');
+T_features = buildFeaturesTable(trialStack, bd);
+writetable(T_features, featuresCsv);
+fprintf('Saved trial-level features: %s (%d trials)\n', featuresCsv, height(T_features));
+
+statsCsv = fullfile(DATA_PATH, 'IAB_stats_results.csv');
+writetable(statsTable, statsCsv);
+fprintf('Saved trial-level stats: %s (%d tests)\n', statsCsv, height(statsTable));
 fprintf('\n=== Trial-level figures saved to: %s ===\n', FIG_PATH);
 
 %% ========================================================================
@@ -447,13 +475,65 @@ end
 end
 
 function p = runIndependentTtest(x, y)
+p = independentTtestStats(x, y).p;
+end
+
+function s = independentTtestStats(x, y)
 x = x(isfinite(x));
 y = y(isfinite(y));
+s = struct('test', 'ttest2', 'n1', numel(x), 'n2', numel(y), ...
+    'mean1', NaN, 'mean2', NaN, 't', NaN, 'df', NaN, 'p', NaN, 'd', NaN);
 if numel(x) > 1 && numel(y) > 1
-    [~, p] = ttest2(x, y);
-else
-    p = NaN;
+    [~, p, ~, st] = ttest2(x, y);
+    s.mean1 = mean(x);
+    s.mean2 = mean(y);
+    s.t = st.tstat;
+    s.df = st.df;
+    s.p = p;
+    s.d = (mean(x) - mean(y)) / sqrt((var(x) + var(y)) / 2);
 end
+end
+
+function T = buildFeaturesTable(trialStack, bd)
+% Trial-level table used for figure stats (outlier-masked values).
+Tet = struct2table(trialStack);
+etFields = {'gazeDeviation', 'gazeStdX', 'gazeStdY', 'fixationCount', ...
+    'fixationDurMean', 'saccadeCount', 'saccadeAmpMean', 'scanPathLength', ...
+    'pupilSize', 'timeOnTarget'};
+etFields = etFields(ismember(etFields, Tet.Properties.VariableNames));
+etOnly = Tet(:, [{'subjectID', 'trial'}, etFields]);
+
+if ~isempty(bd)
+    T = struct2table(bd);
+    keep = intersect({'subjectID', 'trial', 'group', 'groupName', 'crossPresent', ...
+        'contAccuracy', 'reactionTime'}, T.Properties.VariableNames, 'stable');
+    T = T(:, keep);
+    T = outerjoin(T, etOnly, 'Keys', {'subjectID', 'trial'}, 'MergeKeys', true);
+else
+    T = Tet;
+    gn = strings(height(T), 1);
+    gn(T.group == 0) = "Fokussiert";
+    gn(T.group == 1) = "Erweitert";
+    T.groupName = gn;
+end
+
+if ismember('crossPresent', T.Properties.VariableNames)
+    T = renamevars(T, 'crossPresent', 'monkeyPresent');
+end
+
+orderStart = {'subjectID', 'trial', 'group', 'groupName', 'monkeyPresent'};
+orderEnd = {'contAccuracy', 'reactionTime'};
+orderMid = setdiff(T.Properties.VariableNames, [orderStart, orderEnd], 'stable');
+T = T(:, [orderStart, orderMid, orderEnd]);
+end
+
+function T = appendTtestRow(T, variable, figureTag, comparison, x, y)
+s = independentTtestStats(x, y);
+row = table(string(variable), string(figureTag), string(comparison), string(s.test), ...
+    s.n1, s.n2, s.mean1, s.mean2, s.t, s.df, s.p, s.d, string(pToStars(s.p)), ...
+    'VariableNames', {'variable', 'figure', 'comparison', 'test', ...
+    'n1', 'n2', 'mean1', 'mean2', 't', 'df', 'p', 'd', 'stars'});
+T = [T; row]; %#ok<AGROW>
 end
 
 function addSigBracket(x1, x2, y, p, capHeight)
@@ -519,10 +599,19 @@ catch
 end
 end
 
-function ax = plotFourGroupTrialBoxplot(ax, yFA, yFP, yEA, yEP, boxPos4, ...
-    jitter4, dotSize, colA, colB, fontSize, yLabelStr, titleStr, showLegend)
+function [ax, testRows] = plotFourGroupTrialBoxplot(ax, yFA, yFP, yEA, yEP, boxPos4, ...
+    jitter4, dotSize, colA, colB, fontSize, yLabelStr, titleStr, showLegend, ...
+    variableName, figureTag, groupLabels)
 % Four trial pools: Focused absent / present, Expanded absent / present at x 1,2,4,5.
 % Brackets use independent two-sample t-tests on trial pools (not paired by subject).
+if nargin < 16
+    variableName = '';
+    figureTag = '';
+end
+if nargin < 17 || isempty(groupLabels)
+    groupLabels = {'Fokussiert', 'Erweitert'};
+end
+testRows = table();
 axes(ax);
 hold on;
 boxColors4 = [colA; colA; colB; colB];
@@ -558,6 +647,16 @@ pFocusedDist = runIndependentTtest(yFA, yFP);
 pExpandedDist = runIndependentTtest(yEA, yEP);
 pAbsentGrp = runIndependentTtest(yFA, yEA);
 pPresentGrp = runIndependentTtest(yFP, yEP);
+if ~isempty(variableName)
+    testRows = appendTtestRow(testRows, variableName, figureTag, ...
+        'Focused_monkeyAbsent_vs_present', yFA, yFP);
+    testRows = appendTtestRow(testRows, variableName, figureTag, ...
+        'Expanded_monkeyAbsent_vs_present', yEA, yEP);
+    testRows = appendTtestRow(testRows, variableName, figureTag, ...
+        'monkeyAbsent_Focused_vs_Expanded', yFA, yEA);
+    testRows = appendTtestRow(testRows, variableName, figureTag, ...
+        'monkeyPresent_Focused_vs_Expanded', yFP, yEP);
+end
 
 yMax = max(valsAll(valid));
 yMin = min(valsAll(valid));
@@ -582,15 +681,15 @@ ylim(ax, [yMin - 0.12 * yRange, sigLevels(end) + capH + 0.10 * yRange]);
 xlim(ax, [0.5 5.5]);
 
 set(ax, 'XTick', boxPos4, ...
-    'XTickLabel', {'Monkey absent', 'Monkey present', 'Monkey absent', 'Monkey present'}, ...
+    'XTickLabel', {'Affe abwesend', 'Affe anwesend', 'Affe abwesend', 'Affe anwesend'}, ...
     'FontSize', fontSize - 2);
-addGroupedXAxisLabels(ax, [1.5 4.5], {'Focused', 'Expanded'});
+addGroupedXAxisLabels(ax, [1.5 4.5], groupLabels);
 ylabel(ax, yLabelStr, 'FontSize', fontSize);
 title(ax, titleStr, 'FontSize', fontSize);
 if showLegend
     hFocused = patch(nan, nan, colA, 'FaceAlpha', 0.25, 'EdgeColor', colA, 'LineWidth', 1.5);
     hExpanded = patch(nan, nan, colB, 'FaceAlpha', 0.25, 'EdgeColor', colB, 'LineWidth', 1.5);
-    legend(ax, [hFocused, hExpanded], {'Focused', 'Expanded'}, ...
+    legend(ax, [hFocused, hExpanded], groupLabels, ...
         'FontSize', fontSize - 4, 'Location', 'northeast');
 end
 box(ax, 'off');
