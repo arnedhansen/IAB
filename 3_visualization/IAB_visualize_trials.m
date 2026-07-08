@@ -1,6 +1,6 @@
 %% IAB Eye-Tracking and Behavior: Trial-Level Visualization
 % Same layout as IAB_visualize.m (boxplots, jittered trial points, significance
-% brackets) but each point is a trial. Omits BCEA and heatmaps.
+% brackets) but each point is a trial.
 %
 % ET boxplots pool trials across distractor (monkey absent vs present). The
 % between-group bracket (Focused vs Expanded) uses a two-sample t-test on trial
@@ -314,7 +314,205 @@ else
 end
 
 %% ========================================================================
-%  3. TIME ON TARGET (monkey-present trials only, trial-level)
+%  3. GAZE HEATMAPS BY GROUP (baseline-change + distractor-centered)
+%  ========================================================================
+fprintf('Plotting gaze heatmaps...\n');
+
+screenW = 800;
+screenH = 600;
+centreX = 400;
+centreY = 300;
+nBins = 50;
+xEdges = linspace(0, screenW, nBins + 1);
+yEdges = linspace(0, screenH, nBins + 1);
+if exist('fspecial', 'file') == 2
+    kernel = fspecial('gaussian', [5 5], 1.5);
+else
+    halfK = 2;
+    [Xk, Yk] = meshgrid(-halfK:halfK, -halfK:halfK);
+    kernel = exp(-(Xk.^2 + Yk.^2) / (2 * 1.5^2));
+    kernel = kernel / sum(kernel(:));
+end
+brMap = rdbuCmap(256);
+tot_radius_dva = 2;
+ppd = 50; % matches IAB_task.m measured override
+tot_radius_px = tot_radius_dva * ppd;
+
+% Monkey image at display size used in the paradigm (0.25 dva)
+distractorSize_dva = 0.25;
+distractorSize_pix = round(distractorSize_dva * ppd);
+monkeyImagePath = '/Users/Arne/Documents/GitHub/IAB/0_paradigm/monkey.png';
+[monkeyRGB, ~, monkeyAlpha] = imread(monkeyImagePath);
+if isempty(monkeyAlpha)
+    monkeyAlpha = 255 * ones(size(monkeyRGB, 1), size(monkeyRGB, 2), 'uint8');
+end
+[origH, origW, ~] = size(monkeyRGB);
+aspectRatio = origW / origH;
+if aspectRatio >= 1
+    monkeyW = distractorSize_pix;
+    monkeyH = max(1, round(distractorSize_pix / aspectRatio));
+else
+    monkeyH = distractorSize_pix;
+    monkeyW = max(1, round(distractorSize_pix * aspectRatio));
+end
+monkeyRGB = imresize(monkeyRGB, [monkeyH, monkeyW]);
+monkeyAlpha = imresize(monkeyAlpha, [monkeyH, monkeyW]);
+monkeyX = linspace(-monkeyW/2, monkeyW/2, monkeyW);
+monkeyY = linspace(-monkeyH/2, monkeyH/2, monkeyH);
+
+% Accumulate 2-D histograms once while loading each etData file (avoid
+% reloading subjects twice and avoid growing million-sample arrays with []).
+Hbase_by_g = {zeros(nBins), zeros(nBins)};
+Hdist_by_g = {zeros(nBins), zeros(nBins)};
+Hrel_by_g  = {zeros(nBins), zeros(nBins)};
+xRelLim = 250;
+yRelLim = 200;
+xRelEdges = linspace(-xRelLim, xRelLim, nBins + 1);
+yRelEdges = linspace(-yRelLim, yRelLim, nBins + 1);
+
+fprintf('  Loading etData and binning gaze samples once per subject...\n');
+tHeat = tic;
+for s = 1:numel(subjects)
+    subjID = num2str(subjects(s));
+    etFile = fullfile(DATA_PATH, subjID, 'etData_IAB.mat');
+    if ~exist(etFile, 'file')
+        continue;
+    end
+    fprintf('    subject %s ...\n', subjID);
+    D = load(etFile, 'etData');
+    etData = D.etData;
+    gIdx = strcmp(etData.group, 'B') + 1;
+
+    for trl = 1:numel(etData.gazeX)
+        gx = etData.gazeX{trl}(:);
+        gy = etData.gazeY{trl}(:);
+        valid = isfinite(gx) & isfinite(gy);
+        if ~any(valid)
+            continue;
+        end
+
+        Htrl = histcounts2(gx(valid), gy(valid), xEdges, yEdges);
+        if etData.crossPresent(trl) == 1
+            Hdist_by_g{gIdx} = Hdist_by_g{gIdx} + Htrl;
+        else
+            Hbase_by_g{gIdx} = Hbase_by_g{gIdx} + Htrl;
+        end
+
+        if etData.crossPresent(trl) ~= 1 || isempty(etData.distractorPos{trl})
+            continue;
+        end
+        nSamples = numel(gx);
+        dPos = etData.distractorPos{trl};
+        nDist = size(dPos, 1);
+        if nSamples < 2 || nDist < 2
+            continue;
+        end
+
+        if isfield(etData, 'distractorTime') && numel(etData.distractorTime) >= trl && ~isempty(etData.distractorTime{trl})
+            dTime = etData.distractorTime{trl}(:);
+            if numel(dTime) ~= nDist
+                dRel = linspace(0, 7.0, nDist)';
+            else
+                dRel = dTime - dTime(1);
+            end
+        else
+            dRel = linspace(0, 7.0, nDist)';
+        end
+
+        if isfield(etData, 'time') && numel(etData.time) >= trl && ~isempty(etData.time{trl})
+            tGaze = etData.time{trl}(:);
+            if numel(tGaze) ~= nSamples
+                tGaze = linspace(0, 7.0, nSamples)';
+            end
+        else
+            tGaze = linspace(0, 7.0, nSamples)';
+        end
+
+        dX = interp1(dRel, dPos(:, 1), tGaze, 'linear', 'extrap');
+        dY = interp1(dRel, dPos(:, 2), tGaze, 'linear', 'extrap');
+        validRel = valid & isfinite(dX) & isfinite(dY);
+        if ~any(validRel)
+            continue;
+        end
+        Hrel_by_g{gIdx} = Hrel_by_g{gIdx} + histcounts2( ...
+            gx(validRel) - dX(validRel), gy(validRel) - dY(validRel), ...
+            xRelEdges, yRelEdges);
+    end
+end
+fprintf('  Heatmap binning done in %.1f s.\n', toc(tHeat));
+
+% Normalize, smooth, plot baseline-change (within group)
+figure; set(gcf, 'Position', [0 0 1512 982], 'Color', 'w');
+for gPlot = 0:1
+    subplot(1, 2, gPlot + 1);
+    Hbase = normalizeHeatmap(Hbase_by_g{gPlot + 1}, kernel);
+    Hdist = normalizeHeatmap(Hdist_by_g{gPlot + 1}, kernel);
+    Hdiff = Hdist - Hbase;
+    imagesc(xEdges(1:end-1), yEdges(1:end-1), Hdiff');
+    set(gca, 'YDir', 'normal');
+    colormap(gca, brMap);
+    cLim = max(abs(Hdiff(:)));
+    if ~isfinite(cLim) || cLim == 0
+        cLim = 1;
+    end
+    caxis([-cLim, cLim]);
+    cb = colorbar;
+    cb.Label.String = '\Delta Blickdichte (Affe anwesend - Affe abwesend)';
+    hold on;
+    th = linspace(0, 2*pi, 200);
+    plot(centreX + tot_radius_px * cos(th), centreY + tot_radius_px * sin(th), ...
+        ':', 'Color', [0 0 0], 'LineWidth', 1.5);
+    hold off;
+    xlabel('Bildschirmbreite [px]', 'FontSize', fontSize - 1);
+    ylabel('Bildschirmhöhe [px]', 'FontSize', fontSize - 1);
+    if gPlot == 0
+        title('Fokussiert', 'FontSize', fontSize);
+    else
+        title('Erweitert', 'FontSize', fontSize);
+    end
+    set(gca, 'FontSize', fontSize - 2);
+    axis equal;
+    xlim([0 screenW]);
+    ylim([0 screenH]);
+end
+sgtitle('Blick-Heatmap: Differenz Affe anwesend minus Affe abwesend', 'FontSize', fontSize + 1);
+saveas(gcf, fullfile(FIG_PATH, 'IAB_gaze_heatmap_baseline_change_trials.png'));
+close;
+
+% Distraktor-zentrierte Gruppendifferenz
+Hrel_foc = normalizeHeatmap(Hrel_by_g{1}, kernel);
+Hrel_exp = normalizeHeatmap(Hrel_by_g{2}, kernel);
+Hrel_diff = Hrel_exp - Hrel_foc;
+
+%%
+figure; set(gcf, 'Position', [0 0 1512 982], 'Color', 'w');
+imagesc(xRelEdges(1:end-1), yRelEdges(1:end-1), Hrel_diff');
+set(gca, 'YDir', 'normal');
+colormap(gca, brMap);
+cLim = max(abs(Hrel_diff(:)));
+if ~isfinite(cLim) || cLim == 0
+    cLim = 1;
+end
+caxis([-cLim, cLim]);
+cb = colorbar;
+cb.Label.String = '\Delta Blickdichte (Erweitert - Fokussiert)';
+hold on;
+hMonkey = image('XData', monkeyX, 'YData', monkeyY, 'CData', monkeyRGB);
+set(hMonkey, 'AlphaData', double(monkeyAlpha) / 255);
+hold off;
+fontSize = fontSize*1.2
+xlabel('\DeltaX relativ zum Affen [px]', 'FontSize', fontSize);
+ylabel('\DeltaY relativ zum Affen [px]', 'FontSize', fontSize);
+title('Zentrierte Blickdichte: Gruppendifferenz', 'FontSize', fontSize + 2);
+set(gca, 'FontSize', fontSize - 2);
+axis equal;
+xlim([-xRelLim xRelLim]);
+ylim([-yRelLim yRelLim]);
+saveas(gcf, fullfile(FIG_PATH, 'IAB_gaze_heatmap_distractor_centered_group_diff_trials.png'));
+%close;
+
+%% ========================================================================
+%  4. TIME ON TARGET (monkey-present trials only, trial-level)
 %  ========================================================================
 fprintf('Plotting trial-level time on target...\n');
 
@@ -713,4 +911,24 @@ for i = 1:numel(xCenters)
         'FontWeight', 'normal', ...
         'Clipping', 'off');
 end
+end
+
+function H = normalizeHeatmap(H, kernel)
+if sum(H(:)) > 0
+    H = H ./ sum(H(:));
+end
+if nargin >= 2 && ~isempty(kernel)
+    H = conv2(H, kernel, 'same');
+end
+end
+
+function cmap = rdbuCmap(n)
+if nargin < 1
+    n = 256;
+end
+rdbu = [33 102 172; 67 147 195; 146 197 222; 209 229 240; 247 247 247; ...
+    253 219 199; 244 165 130; 214 96 77; 178 24 43] / 255;
+x = linspace(0, 1, size(rdbu, 1));
+xi = linspace(0, 1, n);
+cmap = interp1(x, rdbu, xi, 'linear');
 end
